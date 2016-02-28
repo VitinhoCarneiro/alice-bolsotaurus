@@ -72,6 +72,7 @@ class Animation(pygame.sprite.Sprite):
 		self.spriterect = pygame.Rect(0, 0, self.w, self.h)
 		self.position = [0.0, 0.0]
 		self.playing = True
+		self.looping = True
 		self.direction = 0
 		self.frame = 0
 		self.frametime = 5/36
@@ -97,10 +98,16 @@ class Animation(pygame.sprite.Sprite):
 				self.frame += 1
 				if self.frame >= self.frames:
 					self.frame = 0
+					if not self.looping:
+						self.playing = False
 		else:
 			self.frame = 0
-			self.framecounter == 0
-		self.spriterect = pygame.Rect(self.frame * self.w, self.direction * self.h, self.w, self.h)
+			self.framecounter = 0
+		self.spriterect = pygame.Rect(self.frame * self.w, self.quantize_direction(self.direction) * self.h, self.w, self.h)
+	
+	def quantize_direction(self, direction):
+		step = 360 / self.directions
+		return int((direction + step / 2) / step) % self.directions
 				
 	
 	def draw(self, dest):
@@ -113,6 +120,7 @@ class AnimationGroup:
 	
 	def add_animation(self, animation):
 		self.animations.append(animation)
+		return animation
 	
 	def set_animation(self, name):
 		j = 0
@@ -127,9 +135,20 @@ class AnimationGroup:
 		errstring += "\" not present in animation list."
 		raise LookupError(errstring)
 	
-	def play(self):
+	def get_animation(self, name):
+		j = 0
 		for i in self.animations:
-			i.playing = True
+			if(i.name == name):
+				return i
+			else:
+				j += 1
+		errstring = "Error: animation \""
+		errstring += name
+		errstring += "\" not present in animation list."
+		raise LookupError(errstring)
+		
+	def play(self):
+		self.animations[self.curr_animation].playing = True
 	
 	def stop(self):
 		for i in self.animations:
@@ -361,6 +380,27 @@ class TilemapHandler:
 		return correction_vector
 		# Ufa!
 		
+	def collide_check(self, hitbox):
+		map_pos = [int(hitbox.centerx / 16), int((hitbox.centery + self.scroll_position) / 16)]
+		collided = False
+		for i in range(3):
+			for j in range(3):
+				if(i == 1 and j == 1):
+					continue
+				else:
+					collided = collided or self.collide_to_tile(hitbox, [map_pos[0] - 1 + i, map_pos[1] - 1 + i])
+		return collided
+		
+	def collide_check_high(self, hitbox):
+		map_pos = [int(hitbox.centerx / 16), int((hitbox.centery + self.scroll_position) / 16)]
+		collided = False
+		for i in range(3):
+			for j in range(3):
+				if(i == 1 and j == 1):
+					continue
+				else:
+					collided = collided or self.collide_to_tile_high(hitbox, [map_pos[0] - 1 + i, map_pos[1] - 1 + i])
+		return collided
 		
 	def collide_to_tile(self, hitbox, tile):
 		#print("tile", tile)
@@ -371,7 +411,25 @@ class TilemapHandler:
 			return False
 		#print(self.collision_map[self.tilemap[tile[1]][tile[0]]])
 		return hitbox.colliderect(pygame.Rect(tile[0] * 16, tile[1] * 16 - self.scroll_position, 16, 16))
-
+		
+	def collide_to_tile_high(self, hitbox, tile):
+		#print("tile", tile)
+		if(tile[0] < 0 or tile[0] > 15 or tile[1] < 0 or tile[1] >= len(self.tilemap)):
+			return False
+		if(self.collision_map[self.tilemap[tile[1]][tile[0]]] == 2):
+			#print("0")
+			return hitbox.colliderect(pygame.Rect(tile[0] * 16, tile[1] * 16 - self.scroll_position, 16, 16))
+		#print(self.collision_map[self.tilemap[tile[1]][tile[0]]])
+		return False
+	
+	def get_obstacle_value(self, hitbox):
+		tile = [int(hitbox.centerx / 16), int((hitbox.centery + self.scroll_position) / 16) - 1]
+		close_enough = (hitbox.top - tile[1] * 16 + 16 - self.scroll_position) < 2 and (hitbox.left - tile[0] * 16) > -2 and (hitbox.right - tile[0] * 16 - 16) < 2
+		#print("close enough?", close_enough, hitbox.top - tile[1] * 16 + 16, hitbox.left - tile[0] * 16, hitbox.right - tile[0] * 16 + 16)
+		if(tile[0] < 0 or tile[0] > 15 or tile[1] < 0 or tile[1] >= len(self.tilemap)):
+			return -1
+		return (self.collision_map[self.tilemap[tile[1]][tile[0]]], close_enough)
+	
 	
 def load_hex_map(filename):
 	path = os.path.join("data", filename)
@@ -408,6 +466,28 @@ class Player:
 	def __init__(self):
 		self.animations = AnimationGroup()
 		self.animations.add_animation(Animation("alice-9mm.png", 6, 8, "9mm"))
+		anim = self.animations.add_animation(Animation("alice-9mm-shoot.png", 3, 1, "9mm-shoot"))
+		anim.playing = False
+		anim.looping = False
+		anim.frametime = 1/16
+		anim = self.animations.add_animation(Animation("alice-9mm-aimshoot.png", 3, 8, "9mm-aimshoot"))
+		anim.playing = False
+		anim.looping = False
+		anim.frametime = 1/16
+		anim = self.animations.add_animation(Animation("alice-9mm-hide-low.png", 1, 1, "9mm-hide-low"))
+		anim.playing = False
+		anim.looping = False
+		anim = self.animations.add_animation(Animation("alice-9mm-hide-high.png", 1, 1, "9mm-hide-high"))
+		anim.playing = False
+		anim.looping = False
+		anim = self.animations.add_animation(Animation("alice-9mm-hideaim-low.png", 3, 8, "9mm-hideaim-low"))
+		anim.playing = False
+		anim.looping = False
+		anim.frametime = 1/16
+		anim = self.animations.add_animation(Animation("alice-9mm-hideaim-high.png", 3, 8, "9mm-hideaim-high"))
+		anim.playing = False
+		anim.looping = False
+		anim.frametime = 1/16
 		self.velocity = [0, 0]
 		self.acceleration = [0, 0]
 		self.accel_coef = 80 
@@ -418,25 +498,42 @@ class Player:
 		self.rapid_fire = True
 		self.gun_speed = 320
 		self.gun_damage = 40
-		self.state = 0 # States: 0 = idle, 1 = moving, 2 = running, 3 = aiming, 4 = hiding, 5 = hiding and aiming, 6 = reloading, 7 = automatic reload
+		self.state = 0 # States: 0 = idle, 1 = moving, 2 = running, 3 = aiming, 4 = hiding low, 5 = hiding and aiming low, 6 = hiding high, 7 = hiding and aiming high, 8 = reloading, 9 = automatic reload, 10 = shooting while standing
 		self.aim_cursor = AimCursor(self.animations.get_position())
 		self.aim_tick_count = 0
 		
 	def update(self, delta_time, tilemap):
+		print("state", self.state)
 		# Get keyboard presses por movement and compute acceleration
 		keys = pygame.key.get_pressed()
-		if(self.state == 0):
+		if(self.state == 0 or self.state == 10):
 			if not (self.velocity[0] == 0 and self.velocity[1] == 0):
 				self.state = 1
 		elif(self.state == 1):
 			if self.velocity[0] == 0 and self.velocity[1] == 0:
 				self.state = 0
-		if((self.state == 0 or self.state == 1) and keys[pygame.K_z]):
+		if((self.state == 4 or self.state == 6) and keys[pygame.K_z]):
+			self.state += 1 # Aim from obstacle
+		if((self.state == 5 or self.state == 7) and (not keys[pygame.K_z])):
+			self.state -= 1 # Return to obstacle
+		if((self.state == 0 or self.state == 1 or self.state == 10) and keys[pygame.K_z]):
 			self.acceleration = [0, 0]
-			self.state = 3 # Aiming
+			obstacle = tilemap.get_obstacle_value(pygame.Rect(self.animations.get_position()[0], self.animations.get_position()[1] + 15, 16, 9))
+			if(obstacle[1]): # If behind the zone for an obstacle...
+				if(obstacle[0] == 1): # If it's low
+					self.state = 4
+				elif(obstacle[0] == 2): # If it's high
+					self.state = 6
+				else: # If it's not an obstacle
+					self.state = 3 # Aiming
+			else:
+				self.state = 3 # Aiming
 		if(self.state == 3 and (not keys[pygame.K_z])):
 			self.state = 0 # Stop aiming
-		if(self.state == 0 or self.state == 1 or self.state == 2 or self.state == 7):
+		if((self.state == 4 or self.state == 6) and (keys[pygame.K_LEFT] or keys[pygame.K_RIGHT] or keys[pygame.K_DOWN])):
+			self.state = 0 # Get out of obstacle
+					
+		if(self.state == 0 or self.state == 1 or self.state == 2 or self.state == 9 or self.state == 10):
 			if keys[pygame.K_UP]:
 				if not keys[pygame.K_DOWN]:
 					self.acceleration[1] = -self.accel_coef
@@ -463,16 +560,19 @@ class Player:
 				self.velocity[i] = 0
 		#print(self.velocity)
 		# Set framerate of animation according to velocity
-		abs_vel = math.sqrt(self.velocity[0] ** 2 + self.velocity[1] ** 2)
-		if(abs_vel > 0):
-			self.animations.play()
-			self.animations.set_framerate(abs_vel / 7)
-		else:
-			self.animations.stop()
-		# Compute direction
-		direction = compute_direction(self.velocity)
-		if(direction > -1):
-			self.animations.set_direction(direction)
+		if(self.state == 0 or self.state == 1 or self.state == 2 or self.state == 9):
+			self.set_animation()
+			abs_vel = math.sqrt(self.velocity[0] ** 2 + self.velocity[1] ** 2)
+			if(abs_vel > 0):
+				self.animations.play()
+				self.animations.set_framerate(abs_vel / 7)
+			else:
+				self.animations.stop()
+			# Compute direction
+			direction = compute_direction(self.velocity)
+			#print("playerdir -", direction)
+			if(direction > -1):
+				self.animations.set_direction(direction)
 		# Move character
 		self.animations.move(self.velocity, delta_time)
 		# Check and correct for collision on the map
@@ -483,7 +583,8 @@ class Player:
 		# Update animation
 		self.animations.update(delta_time)
 			
-		if(self.state == 3): # If aiming:
+		if(self.state == 3 or self.state == 5 or self.state == 7): # If aiming:
+			self.set_animation()
 			self.aim_cursor.showing = True # Show aim cursor
 			#print("Cursor on")
 			if keys[pygame.K_LEFT]: # Rotate aim cursor using left and right keys
@@ -503,6 +604,7 @@ class Player:
 					self.aim_tick_count += 1
 			else:
 				self.aim_tick_count = 0
+			self.animations.set_direction(self.aim_cursor.direction % 360)
 		else: # Else:
 			self.aim_cursor.showing = False # Hide aim cursor
 		
@@ -514,6 +616,22 @@ class Player:
 			#print("shot_timer", self.shot_timer)
 		else:
 			self.shot_timer = 0
+	
+	def set_animation(self):
+		if(self.state == 0 or self.state == 1):
+			self.animations.set_animation("9mm")
+		elif(self.state == 3):
+			self.animations.set_animation("9mm-aimshoot")
+		elif(self.state == 4):
+			self.animations.set_animation("9mm-hide-low")
+		elif(self.state == 5):
+			self.animations.set_animation("9mm-hideaim-low")
+		elif(self.state == 6):
+			self.animations.set_animation("9mm-hide-high")
+		elif(self.state == 7):
+			self.animations.set_animation("9mm-hideaim-high")
+		elif(self.state == 10):
+			self.animations.set_animation("9mm-shoot")
 	
 	def draw(self, dest):
 		self.animations.draw(dest)
@@ -527,16 +645,22 @@ class Player:
 		self.animations.move(0, y)
 	
 	def shoot_ifbuttonpressed(self, bullet_controller):
-		if self.shot_timer > 0:
+		if(self.shot_timer > 0 or self.state == 2 or self.state == 4 or self.state == 6 or self.state == 8 or self.state == 9):
 			return
 		keys = pygame.key.get_pressed()
-		if(self.state == 3):
+		if(self.state == 3 or self.state == 5 or self.state == 7):
 			angle = self.aim_cursor.direction
 		else:
 			angle = 90
+		
 		button_state = keys[pygame.K_x]
 		if(button_state and (self.rapid_fire or not self.shoot_button_state)):
 			bullet_controller.player_shoot([self.animations.get_position()[0] + 12, self.animations.get_position()[1] + 8], angle, self.gun_speed, self.gun_damage)
+			if(self.state == 0):
+				self.state = 10
+				self.set_animation()
+			if(not self.state == 1):
+				self.animations.play()
 			self.shot_timer = self.shot_interval
 		self.shoot_button_state = button_state
 
@@ -551,16 +675,24 @@ class BulletController:
 	def enemy_shoot(self, position, direction, speed, damage):
 		self.enemy_bullets.append(Bullet("shot.png", position, direction, speed, damage, True))
 	
-	def update_all(self, delta_time):
+	def update_all(self, delta_time, tilemap):
 		#print(len(self.player_bullets), len(self.enemy_bullets))
 		for i in self.player_bullets:
 			i.update(delta_time)
 			if i.is_outside_screen():
 				self.player_bullets.remove(i)
+			for h in i.hitboxes:
+				if tilemap.collide_check_high(h):
+					self.player_bullets.remove(i)
+					break
 		for i in self.enemy_bullets:
 			i.update(delta_time)
 			if i.is_outside_screen():
 				self.enemy_bullets.remove(i)
+			for h in i.hitboxes:
+				if tilemap.collide_check(h):
+					self.enemy_bullets.remove(i)
+					break
 	
 	def check_collision_withenemybul(self, rect):
 		bullets = []
@@ -593,24 +725,14 @@ class BulletController:
 		
 # compute_direction: Computes the direction of a velocity vector
 def compute_direction(velocity):
-	if(velocity[0] == 0 and velocity[1] < 0):
-		return 0
-	elif(velocity[0] > 0 and velocity[1] < 0):
-		return 1
-	elif(velocity[0] > 0 and velocity[1] == 0):
-		return 2
-	elif(velocity[0] > 0 and velocity[1] > 0):
-		return 3
-	elif(velocity[0] == 0 and velocity[1] > 0):
-		return 4
-	elif(velocity[0] < 0 and velocity[1] > 0):
-		return 5
-	elif(velocity[0] < 0 and velocity[1] == 0):
-		return 6
-	elif(velocity[0] < 0 and velocity[1] < 0):
-		return 7
-	else:
+	if(velocity[0] == 0 and velocity[1] == 0):
 		return -1
+	else:
+		vec = pygame.math.Vector2(velocity[0], -velocity[1])
+		if(vec.length_squared() > 0.05):
+			return int(vec.as_polar()[1]) % 360
+		else:
+			return -1
 
 def main():
 	pygame.init() # initialize pygame
@@ -624,7 +746,7 @@ def main():
 	bullet_con = BulletController()
 	while(True):
 		delta_time = clock.tick(60) / 1000.0 # grab the time passed since last frame
-		bullet_con.update_all(delta_time)
+		bullet_con.update_all(delta_time, tilemap)
 		alice.update(delta_time, tilemap)
 		alice.shoot_ifbuttonpressed(bullet_con)
 		imgbuffer.fill((0, 0, 0)) # fill the buffer with black pixels
