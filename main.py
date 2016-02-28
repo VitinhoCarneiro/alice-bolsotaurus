@@ -79,6 +79,7 @@ class Animation(pygame.sprite.Sprite):
 		self.framecounter = 0
 		screen = pygame.display.get_surface()
 		self.area = screen.get_rect()
+		self.offsetx = 0
 	
 	def move(self, x_amt, y_amt):
 		self.position[0] += x_amt
@@ -108,15 +109,18 @@ class Animation(pygame.sprite.Sprite):
 	def quantize_direction(self, direction):
 		step = 360 / self.directions
 		return int((direction + step / 2) / step) % self.directions
-				
+	
+	def set_offsetx(self, offset):
+		self.offsetx = offset
 	
 	def draw(self, dest):
-		dest.blit(self.image, (int(self.position[0]), int(self.position[1])), self.spriterect)
+		dest.blit(self.image, (int(self.position[0] + self.offsetx), int(self.position[1])), self.spriterect)
 
 class AnimationGroup:
 	def __init__(self):
 		self.animations = []
 		self.curr_animation = 0
+		
 	
 	def add_animation(self, animation):
 		self.animations.append(animation)
@@ -176,6 +180,9 @@ class AnimationGroup:
 			return
 		frametime = 1/framerate
 		self.animations[self.curr_animation].frametime = frametime
+	
+	def set_offsetx(self, offset):
+		self.animations[self.curr_animation].set_offsetx(offset)
 	
 	def draw(self, dest):
 		self.animations[self.curr_animation].draw(dest)
@@ -503,7 +510,7 @@ class Player:
 		self.aim_tick_count = 0
 		
 	def update(self, delta_time, tilemap):
-		print("state", self.state)
+		#print("state", self.state)
 		# Get keyboard presses por movement and compute acceleration
 		keys = pygame.key.get_pressed()
 		if(self.state == 0 or self.state == 10):
@@ -582,6 +589,10 @@ class Player:
 		self.animations.move_absolute(correction_vector)
 		# Update animation
 		self.animations.update(delta_time)
+		
+		if(self.state == 6):
+			self.animations.set_offsetx(0)
+		
 			
 		if(self.state == 3 or self.state == 5 or self.state == 7): # If aiming:
 			self.set_animation()
@@ -605,10 +616,22 @@ class Player:
 			else:
 				self.aim_tick_count = 0
 			self.animations.set_direction(self.aim_cursor.direction % 360)
+			if(not self.state == 7):
+				self.aim_cursor.position = [self.animations.get_position()[0] + 12, self.animations.get_position()[1] + 8]
+			else:
+				if((self.aim_cursor.direction % 360) >= 90 and (self.aim_cursor.direction % 360) < 180):
+					self.aim_cursor.position = [self.animations.get_position()[0] - 4, self.animations.get_position()[1] + 8]
+					self.animations.set_offsetx(-8)
+				elif((self.aim_cursor.direction % 360) < 90 and (self.aim_cursor.direction % 360) > 0):
+					self.aim_cursor.position = [self.animations.get_position()[0] + 22, self.animations.get_position()[1] + 8]
+					self.animations.set_offsetx(8)
+				else:
+					self.aim_cursor.position = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 24]
+					self.animations.set_offsetx(0)
 		else: # Else:
 			self.aim_cursor.showing = False # Hide aim cursor
 		
-		self.aim_cursor.position = [self.animations.get_position()[0] + 12, self.animations.get_position()[1] + 8]
+		
 		
 		# Update shot timer
 		if self.shot_timer > 0:
@@ -655,7 +678,7 @@ class Player:
 		
 		button_state = keys[pygame.K_x]
 		if(button_state and (self.rapid_fire or not self.shoot_button_state)):
-			bullet_controller.player_shoot([self.animations.get_position()[0] + 12, self.animations.get_position()[1] + 8], angle, self.gun_speed, self.gun_damage)
+			bullet_controller.player_shoot(self.aim_cursor.position, angle, self.gun_speed, self.gun_damage)
 			if(self.state == 0):
 				self.state = 10
 				self.set_animation()
