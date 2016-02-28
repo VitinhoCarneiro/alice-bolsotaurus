@@ -144,6 +144,10 @@ class AnimationGroup:
 		for i in self.animations:
 			i.move(velocity[0] * delta_time, velocity[1] * delta_time)	
 	
+	def move_absolute(self, amount):
+		for i in self.animations:
+			i.move(amount[0], amount[1])
+	
 	def moveto(self, x, y):
 		for i in self.animations:
 			i.moveto(x, y)
@@ -198,7 +202,7 @@ class TilemapHandler:
 	def __init__(self, tileset, tilemap, collision_map):
 		self.tileset = load_png("tiles", tileset)
 		self.tilemap = load_hex_map(tilemap)
-		self.collision_map = load_hex_map(collision_map)
+		self.collision_map = load_hex_array(collision_map)
 		self.scroll_position = (len(self.tilemap) - 14) * 16
 		#print("map_len", len(self.tilemap))
 		#print("scroll at", self.scroll_position)
@@ -213,9 +217,161 @@ class TilemapHandler:
 				dest.blit(self.tileset, (i * 16, current_pos * 16 - self.scroll_position), pygame.Rect(tileset_x, tileset_y, 16, 16))
 			current_pos += 1
 	
-	#def collide_vecproj(self, hitbox):
-		#TODO
+	# collide_vecproj: Checks collision on the map and returns a correction vector
+	def collide_vecproj(self, hitbox, motion_vector):
+		map_pos = [int(hitbox.centerx / 16), int((hitbox.centery + self.scroll_position) / 16)]
+		correction_vector = [0, 0]
+		collided = False
 		
+		# Handle horizontal collision
+		if(self.collide_to_tile(hitbox, [map_pos[0] + 1, map_pos[1]])):
+			# Collision on the right
+			collided = True
+			correction_vector[0] -= hitbox.right - (map_pos[0] + 1) * 16
+		elif(self.collide_to_tile(hitbox, [map_pos[0] - 1, map_pos[1]])):
+			# Collision on the left
+			collided = True
+			#print("hitbox left", hitbox.left, "tile right", ((map_pos[0] - 1) * 16 + 15))
+			correction_vector[0] -= hitbox.left - ((map_pos[0] - 1) * 16 + 16)
+			
+		# Handle vertical collision
+		if(self.collide_to_tile(hitbox, [map_pos[0], map_pos[1] - 1])):
+			# Collision on the top
+			collided = True
+			correction_vector[1] -= hitbox.top - ((map_pos[1] - 1) * 16 + 16 - self.scroll_position)
+		elif(self.collide_to_tile(hitbox, [map_pos[0], map_pos[1] + 1])):
+			# Collision on the bottom
+			collided = True
+			correction_vector[1] -= hitbox.bottom - ((map_pos[1] + 1) * 16 - self.scroll_position)
+		if(collided):
+			#print(correction_vector)
+			return correction_vector
+			
+		# We have not collided yet, so check diagonals
+		if(self.collide_to_tile(hitbox, [map_pos[0] + 1, map_pos[1] + 1])):
+			# Collision on bottom-right
+			tile_top = (map_pos[1] + 1) * 16 - self.scroll_position
+			tile_left = (map_pos[0] + 1) * 16
+			#print("collided bottom-right - tiletop", tile_top, "tileleft", tile_left, "hitboxbottom", hitbox.bottom, "hitboxright", hitbox.right)
+			if((hitbox.bottom - motion_vector[1]) < tile_top):
+				if((hitbox.right - motion_vector[0]) < tile_left):
+					# The entity came from the diagonal
+					correction_vector[0] -= hitbox.right - tile_left
+					correction_vector[1] -= hitbox.bottom - tile_top
+				else:
+					# The entity came from the top
+					correction_vector[1] -= hitbox.bottom - tile_top
+			elif((hitbox.right - motion_vector[0]) < tile_left):
+				# The entity came from the right
+				correction_vector[0] -= hitbox.right - tile_left
+			else:
+				# Worst case: things simply don't make sense
+				if(math.fabs(motion_vector[1]) > math.fabs(motion_vector[0])):
+					correction_vector[1] -= hitbox.bottom - tile_top
+				elif(math.fabs(motion_vector[1]) < math.fabs(motion_vector[0])):
+					correction_vector[0] -= hitbox.right - tile_left
+				else:
+					correction_vector[0] -= 1
+					correction_vector[1] -= 1
+			
+				
+		elif(self.collide_to_tile(hitbox, [map_pos[0] - 1, map_pos[1] + 1])):
+			# Collision on bottom-left
+			tile_top = (map_pos[1] + 1) * 16 - self.scroll_position
+			tile_right = (map_pos[0] - 1) * 16 + 16
+			#print("collided bottom-left - tiletop", tile_top, "tileright", tile_right, "hitboxbottom", hitbox.bottom, "hitboxleft", hitbox.left)
+			if((hitbox.bottom - motion_vector[1]) < tile_top):
+				if((hitbox.left - motion_vector[0]) > tile_right):
+					# The entity came from the diagonal - worst case!
+					#print("diagonal - mv", motion_vector)
+					correction_vector[0] -= hitbox.left - tile_right
+					correction_vector[1] -= hitbox.bottom - tile_top
+				else:
+					#print("top - mv", motion_vector)
+					# The entity came from the top
+					correction_vector[1] -= hitbox.bottom - tile_top
+			elif((hitbox.left - motion_vector[0]) > tile_right):
+				# The entity came from the right
+				#print("right - mv", motion_vector)
+				correction_vector[0] -= hitbox.left - tile_right
+			else:
+				# Worst case: things simply don't make sense
+				#print("snafu - mv", motion_vector)
+				if(math.fabs(motion_vector[1]) > math.fabs(motion_vector[0])):
+					correction_vector[1] -= hitbox.bottom - tile_top
+				elif(math.fabs(motion_vector[1]) < math.fabs(motion_vector[0])):
+					correction_vector[0] -= hitbox.left - tile_right
+				else:
+					correction_vector[0] += 1
+					correction_vector[1] -= 1
+				
+		elif(self.collide_to_tile(hitbox, [map_pos[0] - 1, map_pos[1] - 1])):
+			# Collision on top-left
+			tile_bottom = (map_pos[1] - 1) * 16 - self.scroll_position + 15
+			tile_right = (map_pos[0] - 1) * 16 + 16
+			#print("collided top-left - tilebottom", tile_bottom, "tileright", tile_right, "hitboxtop", hitbox.top, "hitboxleft", hitbox.left)
+			if((hitbox.top - motion_vector[1]) > tile_bottom):
+				if((hitbox.left - motion_vector[0]) > tile_right):
+					# The entity came from the diagonal - worst case!
+					correction_vector[0] -= hitbox.left - tile_right
+					correction_vector[1] -= hitbox.top - tile_bottom
+				else:
+					# The entity came from the top
+					correction_vector[1] -= hitbox.top - tile_bottom
+			elif((hitbox.left - motion_vector[0]) > tile_right):
+				# The entity came from the right
+				correction_vector[0] -= hitbox.left - tile_right
+			else:
+				# Worst case: things simply don't make sense
+				if(math.fabs(motion_vector[1]) > math.fabs(motion_vector[0])):
+					correction_vector[1] -= hitbox.top - tile_bottom
+				elif(math.fabs(motion_vector[1]) < math.fabs(motion_vector[0])):
+					correction_vector[0] -= hitbox.left - tile_right
+				else:
+					correction_vector[0] += 1
+					correction_vector[1] += 1
+				
+		elif(self.collide_to_tile(hitbox, [map_pos[0] + 1, map_pos[1] - 1])):
+			# Collision on top-right
+			tile_bottom = (map_pos[1] - 1) * 16 - self.scroll_position + 15
+			tile_left = (map_pos[0] + 1) * 16
+			#print("collided top-right - tilebottom", tile_bottom, "tileleft", tile_left, "hitboxtop", hitbox.top, "hitboxright", hitbox.right)
+			if((hitbox.top - motion_vector[1]) > tile_bottom):
+				if((hitbox.right - motion_vector[0]) < tile_left):
+					# The entity came from the diagonal - worst case!
+					correction_vector[0] -= hitbox.right - tile_left
+					correction_vector[1] -= hitbox.top - tile_bottom
+				else:
+					# The entity came from the top
+					correction_vector[1] -= hitbox.top - tile_bottom
+			elif((hitbox.right - motion_vector[0]) < tile_left):
+				# The entity came from the right
+				correction_vector[0] -= hitbox.right - tile_left
+			else:
+				# Worst case: things simply don't make sense
+				if(math.fabs(motion_vector[1]) > math.fabs(motion_vector[0])):
+					correction_vector[1] -= hitbox.top - tile_bottom
+				elif(math.fabs(motion_vector[1]) < math.fabs(motion_vector[0])):
+					correction_vector[0] -= hitbox.right - tile_left
+				else:
+					correction_vector[0] -= 1
+					correction_vector[1] += 1
+				
+		#print(correction_vector)
+		return correction_vector
+		# Ufa!
+		
+		
+	def collide_to_tile(self, hitbox, tile):
+		#print("tile", tile)
+		if(tile[0] < 0 or tile[0] > 15 or tile[1] < 0 or tile[1] >= len(self.tilemap)):
+			return hitbox.colliderect(pygame.Rect(tile[0] * 16, tile[1] * 16 - self.scroll_position, 16, 16))
+		if(self.collision_map[self.tilemap[tile[1]][tile[0]]] == 0):
+			#print("0")
+			return False
+		#print(self.collision_map[self.tilemap[tile[1]][tile[0]]])
+		return hitbox.colliderect(pygame.Rect(tile[0] * 16, tile[1] * 16 - self.scroll_position, 16, 16))
+
 	
 def load_hex_map(filename):
 	path = os.path.join("data", filename)
@@ -235,7 +391,19 @@ def load_hex_map(filename):
 			maparray.append(tileline)
 		return maparray
 
-
+def load_hex_array(filename):
+	path = os.path.join("data", filename)
+	with open(path, "r") as mapfile:
+		mapstrs = mapfile.readlines()
+		strmap = []
+		for i in mapstrs:
+			strmap.append(i.split())
+		maparray = []
+		for line in strmap:
+			for tile in line:
+				maparray.append(int(tile, 16)) # converts the hex value to an integer
+		return maparray
+		
 class Player:
 	def __init__(self):
 		self.animations = AnimationGroup()
@@ -254,7 +422,7 @@ class Player:
 		self.aim_cursor = AimCursor(self.animations.get_position())
 		self.aim_tick_count = 0
 		
-	def update(self, delta_time):
+	def update(self, delta_time, tilemap):
 		# Get keyboard presses por movement and compute acceleration
 		keys = pygame.key.get_pressed()
 		if(self.state == 0):
@@ -307,6 +475,11 @@ class Player:
 			self.animations.set_direction(direction)
 		# Move character
 		self.animations.move(self.velocity, delta_time)
+		# Check and correct for collision on the map
+		motion_vector = [self.velocity[0] * delta_time, self.velocity[1] * delta_time]
+		hitbox = pygame.Rect(self.animations.get_position()[0], self.animations.get_position()[1] + 15, 16, 9)
+		correction_vector = tilemap.collide_vecproj(hitbox, motion_vector)
+		self.animations.move_absolute(correction_vector)
 		# Update animation
 		self.animations.update(delta_time)
 			
@@ -452,7 +625,7 @@ def main():
 	while(True):
 		delta_time = clock.tick(60) / 1000.0 # grab the time passed since last frame
 		bullet_con.update_all(delta_time)
-		alice.update(delta_time)
+		alice.update(delta_time, tilemap)
 		alice.shoot_ifbuttonpressed(bullet_con)
 		imgbuffer.fill((0, 0, 0)) # fill the buffer with black pixels
 		tilemap.draw_ground(imgbuffer) # draw the ground tile layer
