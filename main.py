@@ -4,6 +4,7 @@ import pygame
 import math
 import os
 import sys
+import random
 
 
 
@@ -20,6 +21,7 @@ class Bullet:
 		self.sprite = load_png("sprites", spritefile)
 		self.image = pygame.transform.rotate(self.sprite, direction - 90)
 		self.position = [(position[0] - self.image.get_width() / 2), (position[1] - self.image.get_height() / 2)]
+		self.direction = direction
 		self.vector = [math.cos(math.radians(direction)), -math.sin(math.radians(direction))]
 		#print("bullet vector", self.vector)
 		self.speed = speed
@@ -80,6 +82,7 @@ class Animation(pygame.sprite.Sprite):
 		screen = pygame.display.get_surface()
 		self.area = screen.get_rect()
 		self.offsetx = 0
+		self.returns = True
 	
 	def move(self, x_amt, y_amt):
 		self.position[0] += x_amt
@@ -98,11 +101,15 @@ class Animation(pygame.sprite.Sprite):
 				self.framecounter -= self.frametime
 				self.frame += 1
 				if self.frame >= self.frames:
-					self.frame = 0
+					if(self.returns):
+						self.frame = 0
+					else:
+						self.frame -= 1
 					if not self.looping:
 						self.playing = False
 		else:
-			self.frame = 0
+			if(self.returns):
+				self.frame = 0
 			self.framecounter = 0
 		self.spriterect = pygame.Rect(self.frame * self.w, self.quantize_direction(self.direction) * self.h, self.w, self.h)
 	
@@ -437,6 +444,14 @@ class TilemapHandler:
 			return -1
 		return (self.collision_map[self.tilemap[tile[1]][tile[0]]], close_enough)
 	
+	def get_map_obstacle_value(self, tile):
+		#print("close enough?", close_enough, hitbox.top - tile[1] * 16 + 16, hitbox.left - tile[0] * 16, hitbox.right - tile[0] * 16 + 16)
+		if(tile[0] < 0 or tile[0] > 15 or tile[1] < 0 or tile[1] >= len(self.tilemap)):
+			return -1
+		return self.collision_map[self.tilemap[tile[1]][tile[0]]]
+	
+	def scroll(self, y):
+		self.scroll_position -= y
 	
 def load_hex_map(filename):
 	path = os.path.join("data", filename)
@@ -468,7 +483,493 @@ def load_hex_array(filename):
 			for tile in line:
 				maparray.append(int(tile, 16)) # converts the hex value to an integer
 		return maparray
+
+class Enemy:
+	def __init__(self):
+		self.animations = AnimationGroup()
+		self.health = 90
+		self.shot_timer = 0.0
+		self.shot_interval = 0.4
+		self.gun_speed = 180
+		self.gun_damage = 20
+		self.dead = False
+		self.deadanim = False
+		self.deathtimer = 1.5
+		self.blink_state = False
+		self.blink_rate = 1/24
+		self.blink_timer = 0.6
+		self.taking_damage = False
+	
+	def update(self, delta_time, bullet_controller):
+		if(self.dead):
+			if(not self.deadanim):
+				self.animations.set_animation("dead")
+				self.animations.play()
+			if(self.deathtimer > 0):
+				self.deathtimer -= delta_time
+			else:
+				self.deathtimer = 0
+			if(self.blink_timer > 0):
+				self.blink_timer -= delta_time
+			else:
+				self.blink_timer = self.blink_rate
+				if(self.blink_state):
+					self.blink_state = False
+				else:
+					self.blink_state = True
+			self.animations.update(delta_time)
+			return
+		if(self.taking_damage):
+			self.taking_damage = False
+			self.animations.set_animation("walk")
+		self.check_for_damage(bullet_controller)
+		self.shot_timer -= delta_time
+		if(self.shot_timer <= 0):
+			self.shot_timer = 0
 		
+	
+	def get_hitbox(self):
+		topleft = self.animations.get_position()
+		return pygame.Rect(topleft[0] + 1, topleft[1] + 1, 14, 22)
+		
+	def get_coll_hitbox(self):
+		topleft = self.animations.get_position()
+		return pygame.Rect(topleft[0] + 15, topleft[1] + 1, 16, 9)
+		
+	def take_damage(self, damage):
+		if(self.dead):
+			return
+		self.health -= damage
+		self.animations.set_animation("damage")
+		self.taking_damage = True
+		if(self.health <= 0):
+			self.die()
+	
+	def die(self):
+		if(self.dead):
+			return
+		self.dead = True
+		
+	def is_onscreen(self):
+		#print("is_onscreen called, ypos =", self.animations.get_position()[1])
+		return self.animations.get_position()[1] > -24 and (not self.is_offscreen())
+		
+	
+	def is_offscreen(self):
+		return self.animations.get_position()[1] > 224
+	
+	
+	def check_for_damage(self, bullet_controller):
+		if(self.dead):
+			return
+		hitbox = self.get_hitbox()
+		bullets = bullet_controller.collide_player(hitbox)
+		for bullet in bullets:
+			self.take_damage(bullet.damage)
+		bullet_controller.destroy(bullets)
+	
+	def scroll(self, y):
+		self.animations.move_absolute([0, y])
+	
+	def draw(self, dest):
+		if self.is_onscreen() and not self.blink_state:
+			#print("roar")
+			self.animations.draw(dest)
+
+# -- Enemy classes - subclasses of Enemy -- #
+
+class Guard(Enemy):
+	def __init__(self, xpos, ypos, scroll_pos, aitype="normal"):
+		Enemy.__init__(self)
+		self.animations.add_animation(Animation("guard.png", 4, 4, "walk"))
+		self.animations.add_animation(Animation("guard-damage.png", 1, 1, "damage"))
+		anim = self.animations.add_animation(Animation("guard-die.png", 3, 1, "dead"))
+		anim.looping = False
+		anim.returns = False
+		anim.frametime = 1/8
+		#print("new guard at", xpos * 16, ypos * 16 - scroll_pos)
+		self.animations.moveto(xpos * 16, ypos * 16 - 8 - scroll_pos)
+		self.aitype = aitype
+		if not(aitype == "normal" or aitype == "camper"):
+			print("Error: Invalid ai type", aitype, "for enemy type \"guard\", defaulting to \"normal\"")
+			self.aitype = "normal"
+		self.current_tile = [xpos, ypos]
+		self.intended_path = [xpos, ypos]
+		self.walk_speed = 30
+		self.walk_frame_count = 0
+		self.velocity = [0, 0]
+		self.movement_stack = []
+		self.moving = False
+		self.ai_state = 0
+		self.cyclic_ai_states = 1
+		self.ai_timer = 180 + int(random.random() * 240)
+		self.pathfind_range = 3
+	
+	def set_ai_state(self, state, timer = 180, deviation = 240):
+		self.ai_timer = timer + int(random.random() * deviation)
+		self.ai_state = state
+		
+	def update(self, delta_time, bullet_controller, tilemap, enemy_controller, player):
+		Enemy.update(self, delta_time, bullet_controller)
+		if(self.dead):
+			return
+		if(not self.is_onscreen()):
+			return
+		# -- AI -- #
+		if(self.ai_timer > 0):
+			self.ai_timer -= 1
+		else:
+			self.ai_timer = 180 + int(random.random() * 240)
+			self.ai_state += 1
+			if(self.ai_state >= self.cyclic_ai_states):
+				self.ai_state = 0
+		if(self.aitype == "normal"):
+			if(not self.moving):
+				playerpos = player.animations.get_position()
+				if(self.ai_state == 0): # Attack
+					if(playerpos[1] - self.animations.get_position()[1] > 96): # Too far away from player - try to get close
+						if(random.random() < 0.05 and playerpos[1] - self.animations.get_position()[1] < 144):
+							self.set_ai_state(2, 120, 90)
+						# Intent: move down
+						#print("{ai-move}", self, "Trying move down")
+						self.try_movement([0, 1], tilemap, enemy_controller)
+						#print("{ai-moved}", self, "intended_path =", self.intended_path)
+							
+					elif(playerpos[1] - self.animations.get_position()[1] > 24): # Close enough
+						if(abs(playerpos[0] - self.animations.get_position()[0]) > 48): # Too far away in the X direction
+							if(playerpos[0] - self.animations.get_position()[0] > 0): # Player is to the right
+								# Intent: move right
+								#print("{ai-move}", self, "Trying move right")
+								self.try_movement([1, 0], tilemap, enemy_controller)
+								#print("{ai-moved}", self, "intended_path =", self.intended_path)
+							else:
+								# Intent: move left
+								#print("{ai-move}", self, "Trying move left")
+								self.try_movement([-1, 0], tilemap, enemy_controller)
+								#print("{ai-moved}", self, "intended_path =", self.intended_path)
+								
+						else: # We are going to try to shoot.
+							if(random.random() < 0.04):
+								self.set_ai_state(1, 90, 60)
+							if(self.shot_timer == 0):
+								shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
+								gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
+								bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 30 - 15, self.gun_speed, self.gun_damage)
+								self.shot_timer = self.shot_interval
+								
+					else: # Too close or below the player - we don't want that
+						# Intent: move up
+						self.try_movement([0, -1], tilemap, enemy_controller)
+						
+						
+				elif(self.ai_state == 1): # Retreat {non-cyclic}
+					if(playerpos[1] - self.animations.get_position()[1] > 80 or playerpos[1] - self.animations.get_position()[1] < 24):
+						self.set_ai_state(0)
+						
+					elif(abs(playerpos[0] - self.animations.get_position()[0]) < 80):
+						if(playerpos[0] - self.animations.get_position()[0] < 0): # Player is to the left
+							# Intent: move right
+							#print("{ai-move}", self, "Trying move right")
+							self.try_movement([1, 0], tilemap, enemy_controller)
+							#print("{ai-moved}", self, "intended_path =", self.intended_path)
+							
+						else:
+							# Intent: move left
+							#print("{ai-move}", self, "Trying move left")
+							self.try_movement([-1, 0], tilemap, enemy_controller)
+							#print("{ai-moved}", self, "intended_path =", self.intended_path)
+				
+				
+				elif(self.ai_state == 2): # Shoot from far away {non-cyclic}
+					if(self.shot_timer == 0):
+						shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
+						gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
+						bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 12 - 6, self.gun_speed, self.gun_damage)
+						self.shot_timer = self.shot_interval
+							
+		# -- Handle movement -- #
+		if(not self.intended_path == []):
+			if(not self.moving):
+				self.moving = True
+				self.walk_frame_count = self.walk_speed
+			if(self.walk_frame_count > 0):
+				xpos = (((self.current_tile[0] * self.walk_frame_count) + (self.intended_path[0] * (self.walk_speed - self.walk_frame_count))) / self.walk_speed) * 16 
+				ypos = (((self.current_tile[1] * self.walk_frame_count) + (self.intended_path[1] * (self.walk_speed - self.walk_frame_count))) / self.walk_speed) * 16 - tilemap.scroll_position - 8
+				#print(self, xpos, ypos)
+				self.animations.moveto(xpos, ypos)
+				self.walk_frame_count -= 1
+			else:
+				self.moving = False
+				self.current_tile = self.intended_path
+				self.intended_path = []
+			
+		
+		"""
+		current_pos = self.animations.get_position()
+		actual_tile = [(current_pos[0] + 8 - ((current_pos[0] + 8) % 16)) / 16, (current_pos[1] + 8 - ((current_pos[1] + 8) % 16)) / 16] 
+		#print(self, "path length =", len(self.intended_path))
+		if(not self.intended_path == []):
+			if(not self.moving):
+				self.moving = True
+				if(not self.intended_path == self.current_tile):
+					#print(self, "tile", self.current_tile, "path", self.intended_path, "|")
+					if(self.current_tile[0] > self.intended_path[0]):
+						self.velocity[0] = -self.walk_speed
+					elif(self.current_tile[0] < self.intended_path[0]):
+						self.velocity[0] = self.walk_speed
+					else:
+						self.velocity[0] = 0
+					if(self.current_tile[1] > self.intended_path[1]):
+						self.velocity[1] = -self.walk_speed
+					elif(self.current_tile[1] < self.intended_path[1]):
+						self.velocity[1] = self.walk_speed
+					else:
+						self.velocity[1] = 0
+					
+					
+				correction_vector = tilemap.collide_vecproj(self.get_coll_hitbox(), self.velocity)
+				if(not correction_vector == [0, 0]):
+					self.velocity = [0, 0]
+					self.animations.move_absolute(correction_vector)
+					self.moving = False
+				
+			
+			if(abs(((current_pos[0] + 8) % 16) - 8) < 1 and abs(((current_pos[1] + 16) % 16) - 8) < 1):
+				#self.current_tile = [int((current_pos[0] + 8 - ((current_pos[0] + 8) % 16)) / 16), int((current_pos[1] + 8 + tilemap.scroll_position - ((current_pos[1] + 8) % 16)) / 16)]
+				self.current_tile = [int((current_pos[0] + 8) / 16), int((current_pos[1] + 8 + tilemap.scroll_position) / 16)]
+				if(self.current_tile == self.intended_path):
+					print(self, "hit waypoint", self.intended_path)
+					self.velocity = [0, 0]
+					self.moving = False
+					self.intended_path = []
+		
+			if(self.moving):
+				self.animations.move(self.velocity, delta_time)
+		"""
+			
+			
+	
+	def lookat_tile(self, delta, tilemap, enemy_controller):
+		#print(self, "lookingat", self.current_tile[0] + delta[0], self.current_tile[1] + delta[1])
+		e = 0
+		if(enemy_controller.check_tile_for_enemy([self.current_tile[0] + delta[0], self.current_tile[1] + delta[1]])):
+			e = -1024
+		#print(tilemap.get_map_obstacle_value([self.current_tile[0] + delta[0], self.current_tile[1] + delta[1]]) + e)
+		return tilemap.get_map_obstacle_value([self.current_tile[0] + delta[0], self.current_tile[1] + delta[1]]) + e
+	
+	def try_movement(self, delta, tilemap, enemy_controller):
+		if(len(self.movement_stack) == 0):
+			delta_temp = delta
+			while(not self.lookat_tile(delta_temp, tilemap, enemy_controller) == 0):
+				self.movement_stack.append(delta_temp)
+				delta_temp = self.rotate_delta_cw(delta)
+				if(len(self.movement_stack) > 4):
+					#print(self, "stuck")
+					return False
+			self.intended_path = [self.current_tile[0] + delta_temp[0], self.current_tile[1] + delta_temp[1]]
+			if(not (tilemap.get_map_obstacle_value(self.intended_path) == 0)):
+				print("{try_movement} Oops! intended_path", self.intended_path, "is blocked but was chosen as unblocked (???)")
+			return True
+		else:
+			if(not delta == self.movement_stack[0]):
+				self.movement_stack = []
+				return self.try_movement(delta, tilemap, enemy_controller)
+			delta_temp = self.movement_stack[len(self.movement_stack) - 1]
+			while(not self.lookat_tile(delta_temp, tilemap, enemy_controller) == 0):
+				delta_temp = self.rotate_delta_cw(delta)
+				if(len(self.movement_stack) > 4):
+					#print(self, "stuck")
+					return False
+				self.movement_stack.append(delta_temp)
+			self.intended_path = [self.current_tile[0] + delta_temp[0], self.current_tile[1] + delta_temp[1]]
+			self.movement_stack.pop()
+			return True
+				
+			
+	
+	def rotate_delta_cw(self, delta):
+		return [-delta[1], delta[0]]
+	
+	"""
+	def get_path(self, intent, tilemap, enemy_controller):
+		if(intent == [0, 1]):
+			search_delta_list = [[0, 3], [1, 2], [1, 3], [-1, 2], [-1, 3], [0, 2], [2, 2], [2, 3], [-2, 2], [-2, 3], [3, 2], [3, 3], [-3, 2], [-3, 3]]
+		elif(intent == [0, -1]):
+			search_delta_list = [[0, -3], [1, -2], [1, -3], [-1, -2], [-1, -3], [0, -2], [2, -2], [2, -3], [-2, -2], [-2, -3], [3, -2], [3, -3], [-3, -2], [-3, -3]]
+		elif(intent == [1, 0]):
+			search_delta_list = [[3, 0], [2, 1], [3, 1], [2, -1], [3, -1], [2, 0], [2, 2], [3, 2], [2, -2], [3, -2], [2, 3], [3, 3], [2, -3], [3, -3]]
+		elif(intent == [-1, 0]):
+			search_delta_list = [[-3, 0], [-2, 1], [-3, 1], [-2, -1], [-3, -1], [-2, 0], [-2, 2], [-3, 2], [-2, -2], [-3, -2], [-2, 3], [-3, 3], [-2, -3], [-3, -3]]
+		else:
+			return []
+		if(self.lookat_tile(intent, tilemap, enemy_controller)): # If the intended tile is free:
+			return [[self.current_tile[0] + intent[0], self.current_tile[1] + intent[1]]]
+		else:
+			mapgraph = MapGraph(tilemap, enemy_controller, self.current_tile, self.pathfind_range)
+			for tile in search_delta_list:
+				path = mapgraph.get_path_to_delta(tile)
+				if(len(path) > 0):
+					print(self, "at position", self.current_tile, "generated path", path)
+					return path
+	"""
+
+		
+			
+		
+		
+
+# -- End -- #
+
+"""
+class MapGraph:
+	def __init__(self, tilemap, enemy_controller, centerpos, radius):
+		print("Building graph", self)
+		self.graph_size = radius * 2 + 1
+		self.radius = radius
+		self.graph = []
+		self.start_node = radius + 1 + self.graph_size * radius - 1
+		self.map_centerpos = centerpos
+		# Build the map graph
+		for i in range(self.graph_size):
+			for j in range(self.graph_size): # Search the area around the center position
+				delta = [i - radius, j - radius]
+				node = []
+				if(tilemap.get_map_obstacle_value([centerpos[0] + delta[0], centerpos[1] + delta[1]]) == 0): # If the node is not an obstacle:
+					ds = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+					diagonalchecking = [[1, 3], [1, 2], [0, 2], [0, 3]]
+					diagonals = [[-1, -1], [-1, 1], [1, 1], [1, -1]]
+					marked = []
+					for n in range(len(ds)):
+						if(not abs(delta[0] + ds[n][0]) > radius and not abs(delta[1] + ds[n][1]) > radius): # If it's not outside the search area
+							if(tilemap.get_map_obstacle_value([centerpos[0] + delta[0] + ds[n][0], centerpos[1] + delta[1] + ds[n][1]]) == 0 
+							and not enemy_controller.check_tile_for_enemy([centerpos[0] + delta[0] + ds[n][0], centerpos[1] + delta[1] + ds[n][1]])): # If this neighbor is not an obstacle:
+								node.append(i + ds[n][0] + (j + ds[n][1]) * (self.graph_size)) # Add this neighbour to the current node
+					for d in diagonalchecking:
+						if(d[0] in marked and d[1] in marked):
+							if(tilemap.get_map_obstacle_value([centerpos[0] + delta[0] + diagonals[d][0], centerpos[1] + delta[1] + diagonals[d][1]]) == 0
+							and not enemy_controller.check_tile_for_enemy([centerpos[0] + delta[0] + diagonals[d][0], centerpos[1] + delta[1] + diagonals[d][1]])): # If this neighbor is not an obstacle:
+								node.append(i + diagonals[d][0] + (j + diagonals[d][1]) * (self.graph_size)) # Add this neighbour to the current node
+				self.graph.append(node)
+		self.best_paths = self.build_paths()
+
+	
+	# build_paths: Uses Djikstra's algorithm to find the best paths from the center of the graph to any node
+	def build_paths(self):
+		distance = [32677] * len(self.graph) # Distance from that node to start node - initialized as "infinity" (an impossible large number)
+		prev_node = [-1] * len(self.graph)
+		unvisited_nodes = []
+		for n in range(len(self.graph)):
+			unvisited_nodes.append(n)
+		
+		distance[self.start_node] = 0
+		prev_node[self.start_node] = -1
+		
+		while(len(unvisited_nodes) > 0):
+			min_distance = 32677
+			current_node = -1
+			for n in unvisited_nodes: # Choose the node with the lowest distance value (in the beginning, that will be the start node)
+				if(distance[n] < min_distance):
+					current_node = n
+			if(current_node == -1):
+				break # This means there are no more nodes to search, because only obstacles are left.
+			unvisited_nodes.remove(current_node)
+			
+			for nn in self.graph[current_node]:
+				alt = distance[current_node] + self.get_length(current_node, nn)
+				if(alt < distance[nn]):
+					distance[nn] = alt
+					prev_node[nn] = current_node
+		
+		return prev_node
+	
+	def get_path_to_delta(self, delta):
+		node = delta[0] + self.radius + (delta[1] + self.radius) * self.graph_size
+		current_node = node
+		path = [self.convert_node_to_coord(current_node)]
+		while(self.best_paths[current_node] > -1):
+			path.insert(0, self.convert_node_to_coord(self.best_paths[current_node]))
+			current_node = self.best_paths[current_node]
+		return path
+	
+	def convert_node_to_coord(self, node):
+		dx = node % self.graph_size - self.radius
+		dy = int((node - dx) / self.graph_size - self.radius)
+		print("graph: node", node, "generated delta", dx, dy, "and coord", [self.map_centerpos[0] + dx, self.map_centerpos[1] + dy])
+		return [self.map_centerpos[0] + dx, self.map_centerpos[1] + dy]
+		
+	def get_length(self, node_a, node_b):
+		ax = node_a % self.graph_size
+		ay = node_a - ax / self.graph_size
+		bx = node_b % self.graph_size
+		by = node_b - bx / self.graph_size
+		if((abs(ax - bx) == 1 and abs(ay - by) == 0) or (abs(ax - bx) == 0 and abs(ay - by) == 1)):
+			return 2
+		elif (abs(ax - bx) == 1 and abs(ay - by) == 1):
+			return 3
+		else:
+			return 2 * math.sqrt((ax - bx) ** 2 + (ay - by) ** 2)
+
+"""
+		
+				
+
+class EnemyController:
+	def __init__(self, enemyfile, map_scroll):
+		self.enemies = []
+		self.load_enemy_file(enemyfile, map_scroll)
+	
+	def load_enemy_file(self, enemyfile, map_scroll):
+		enemydict = dict()
+		path = os.path.join("data", enemyfile)
+		f = open(path)
+		l = f.readline()
+		while(not l == ""):
+			#print(l)
+			if(l == "enemy:\n"):
+				l = f.readline()
+				while(not l == ":end\n"):
+					if not l:
+						raise ValueError("The enemy file is invalid.")
+					l_keyvalue = l.split("=")
+					#print(l_keyvalue)
+					enemydict[l_keyvalue[0]] = l_keyvalue[1]
+					l = f.readline()
+				if(enemydict["type"] == "guard\n"):
+					#print("guard")
+					self.enemies.append(Guard(int(enemydict["xpos"]), int(enemydict["ypos"]), map_scroll))
+				l = f.readline()
+			else:
+				l = f.readline()
+			
+	
+	def update_all(self, delta_time, bullet_controller, tilemap, player):
+		for enemy in self.enemies:
+			if enemy.is_offscreen() or (enemy.dead and enemy.deathtimer == 0):
+				self.enemies.remove(enemy)
+				#print("enemy disposed")
+			else:
+				if enemy.is_onscreen():
+					#print("updating enemy onscreen @ y =", enemy.animations.get_position()[1])
+					enemy.update(delta_time, bullet_controller, tilemap, self, player)
+	
+	def draw_all(self, dest):
+		for enemy in self.enemies:
+			enemy.draw(dest)
+	
+	def scroll_all(self, amount):
+		for enemy in self.enemies:
+			enemy.scroll(amount)
+	
+	def check_tile_for_enemy(self, tile):
+		for enemy in self.enemies:
+			if(enemy.current_tile == tile or enemy.intended_path == tile):
+				return True
+		return False
+			
+		
+				
+					
+	
 class Player:
 	def __init__(self):
 		self.animations = AnimationGroup()
@@ -495,23 +996,77 @@ class Player:
 		anim.playing = False
 		anim.looping = False
 		anim.frametime = 1/16
+		anim = self.animations.add_animation(Animation("alice-damage.png", 1, 1, "damage"))
+		anim = self.animations.add_animation(Animation("alice-die.png", 1, 1, "dead"))
+		anim.looping = False
+		anim.returns = False
+		anim.frametime = 1/8
 		self.velocity = [0, 0]
 		self.acceleration = [0, 0]
 		self.accel_coef = 80 
 		self.drag_coef = 2 # each tick, vel = (vel + acceleration) / drag_coef
 		self.shot_timer = 0.0
-		self.shot_interval = 0.2
+		self.shot_interval = 0.25
+		self.spread_timer = 0.0 # Holds the timer for the gun spread
+		self.spread_interval = 0.5 # The interval for the spread angle to go from max to min after shooting
+		self.spread_angle_min = 3 # The minimum spread angle, in degrees
+		self.spread_angle_max = 30 # Max spread angle
+		self.walk_spread = 0.4 # From 0.0 to 1.0, how shooting while walking affects the spread angle
 		self.shoot_button_state = False
-		self.rapid_fire = True
-		self.gun_speed = 320
-		self.gun_damage = 40
+		self.shoot_buffer = False # This holds a buffer - if you press the shoot key in rapid succession, this ensures the character will shoot at max rate
+		self.rapid_fire = False
+		self.gun_speed = 360
+		self.gun_damage = 35
 		self.state = 0 # States: 0 = idle, 1 = moving, 2 = running, 3 = aiming, 4 = hiding low, 5 = hiding and aiming low, 6 = hiding high, 7 = hiding and aiming high, 8 = reloading, 9 = automatic reload, 10 = shooting while standing
 		self.aim_cursor = AimCursor(self.animations.get_position())
 		self.aim_tick_count = 0
+		self.health = 100
+		self.max_health = 100
+		self.taking_damage = False
+		self.lives = 3
+		self.dead = False
+		self.death_counter = 0
+		self.death_time = 90
+		self.blink_state = False
+		self.blink_rate = 1/24
+		self.blink_timer = 0
+		self.invincible = False
+		self.invincible_timer = 0
+		self.invincibility_time = 240
 		
-	def update(self, delta_time, tilemap):
+	def update(self, delta_time, tilemap, bullet_controller):
+		if(self.dead):
+			if(self.lives == 0):
+				return
+			if(self.death_counter > 0):	
+				self.death_counter -= 1
+			else:
+				self.death_counter = 0
+				self.revive()
+			return
+				
+		if(self.invincible):
+			if(self.invincible_timer > 0):
+				self.invincible_timer -= 1
+			else:
+				self.invincible = False
+			if(self.blink_timer > 0):
+				self.blink_timer -= delta_time
+			else:
+				self.blink_timer = self.blink_rate
+				if(self.blink_state):
+					self.blink_state = False
+				else:
+					self.blink_state = True
+		else:
+			self.blink_state = False
+		
+		if(self.taking_damage):
+			self.taking_damage = False
+			self.set_animation()
+					
 		#print("state", self.state)
-		# Get keyboard presses por movement and compute acceleration
+		# Get keyboard presses for movement and compute acceleration
 		keys = pygame.key.get_pressed()
 		if(self.state == 0 or self.state == 10):
 			if not (self.velocity[0] == 0 and self.velocity[1] == 0):
@@ -521,16 +1076,20 @@ class Player:
 				self.state = 0
 		if((self.state == 4 or self.state == 6) and keys[pygame.K_z]):
 			self.state += 1 # Aim from obstacle
+			self.set_animation()
 		if((self.state == 5 or self.state == 7) and (not keys[pygame.K_z])):
 			self.state -= 1 # Return to obstacle
+			self.set_animation()
 		if((self.state == 0 or self.state == 1 or self.state == 10) and keys[pygame.K_z]):
 			self.acceleration = [0, 0]
 			obstacle = tilemap.get_obstacle_value(pygame.Rect(self.animations.get_position()[0], self.animations.get_position()[1] + 15, 16, 9))
 			if(obstacle[1]): # If behind the zone for an obstacle...
 				if(obstacle[0] == 1): # If it's low
 					self.state = 4
+					self.set_animation()
 				elif(obstacle[0] == 2): # If it's high
 					self.state = 6
+					self.set_animation()
 				else: # If it's not an obstacle
 					self.state = 3 # Aiming
 			else:
@@ -582,11 +1141,16 @@ class Player:
 				self.animations.set_direction(direction)
 		# Move character
 		self.animations.move(self.velocity, delta_time)
+		# Avoid character from going below the screen
+		if(self.animations.get_position()[1] > 200):
+			self.animations.move_absolute([0, -(self.animations.get_position()[1] - 200)])
 		# Check and correct for collision on the map
 		motion_vector = [self.velocity[0] * delta_time, self.velocity[1] * delta_time]
 		hitbox = pygame.Rect(self.animations.get_position()[0], self.animations.get_position()[1] + 15, 16, 9)
 		correction_vector = tilemap.collide_vecproj(hitbox, motion_vector)
 		self.animations.move_absolute(correction_vector)
+		# Update aim
+		self.aim_cursor.position = [self.animations.get_position()[0] + 12, self.animations.get_position()[1] + 8]
 		# Update animation
 		self.animations.update(delta_time)
 		
@@ -633,12 +1197,19 @@ class Player:
 		
 		
 		
-		# Update shot timer
+		# Update shot and spread timer
 		if self.shot_timer > 0:
 			self.shot_timer -= delta_time
 			#print("shot_timer", self.shot_timer)
 		else:
 			self.shot_timer = 0
+		
+		if self.spread_timer > 0:
+			self.spread_timer -= delta_time
+		else:
+			self.spread_timer = 0
+		
+		self.check_for_damage(bullet_controller)
 	
 	def set_animation(self):
 		if(self.state == 0 or self.state == 1):
@@ -657,34 +1228,107 @@ class Player:
 			self.animations.set_animation("9mm-shoot")
 	
 	def draw(self, dest):
-		self.animations.draw(dest)
-		self.aim_cursor.draw(dest)
+		if(not self.blink_state):
+			self.animations.draw(dest)
+		if(not self.dead):
+			self.aim_cursor.draw(dest)
+			pygame.draw.line(dest, pygame.Color(240, 0, 0, 0), (self.animations.get_position()[0], self.animations.get_position()[1] - 2), (self.animations.get_position()[0] + int(16 * (self.health / 100)), self.animations.get_position()[1] - 2))
+	
+	def get_hitbox(self):
+		topleft = self.animations.get_position()
+		return pygame.Rect(topleft[0] + 1, topleft[1] + 1, 14, 22)
+		
+	def check_for_damage(self, bullet_controller):
+		if(self.dead):
+			return
+		hitbox = self.get_hitbox()
+		bullets = bullet_controller.collide_enemy(hitbox)
+		if(not self.invincible):
+			if not(self.state == 4 or self.state == 6):
+				for bullet in bullets:
+					self.take_damage(bullet.damage)
+			else:
+				if(self.state == 6):
+					for bullet in bullets:
+						if(bullet.direction > 30 and bullet.direction < 150):
+							self.take_damage(bullet.damage)
+				else:
+					for bullet in bullets:
+						if(bullet.direction > 10 and bullet.direction < 170):
+							self.take_damage(bullet.damage)
+		bullet_controller.destroy(bullets)
+		
+	def take_damage(self, damage):
+		if(self.dead):
+			return
+		self.health -= damage
+		print("Health:", self.health)
+		self.animations.set_animation("damage")
+		self.taking_damage = True
+		if(self.health <= 0):
+			self.die()
+	
+	def die(self):
+		print("YOU ARE DEAD!!!")
+		self.dead = True
+		self.death_counter = self.death_time
+		self.animations.set_animation("dead")
+	
+	def revive(self):
+		if(self.lives <= 0):
+			return
+		self.lives -= 1
+		self.health = self.max_health
+		self.invincible = True
+		self.invincible_timer = self.invincibility_time
+		self.dead = False
+		self.state = 0
+		self.animations.set_animation("9mm")
+		print("Health:", self.health, "  Lives:", self.lives)
+		
 	
 	def moveto(self, x, y):
 		self.animations.moveto(x, y)
 		self.aim_cursor.position = [self.animations.get_position()[0] + 12, self.animations.get_position()[1] + 8]
 	
 	def scroll(self, y):
-		self.animations.move(0, y)
+		self.animations.move_absolute([0, y])
 	
 	def shoot_ifbuttonpressed(self, bullet_controller):
-		if(self.shot_timer > 0 or self.state == 2 or self.state == 4 or self.state == 6 or self.state == 8 or self.state == 9):
+		if(self.state == 2 or self.state == 4 or self.state == 6 or self.state == 8 or self.state == 9):
 			return
 		keys = pygame.key.get_pressed()
-		if(self.state == 3 or self.state == 5 or self.state == 7):
-			angle = self.aim_cursor.direction
-		else:
-			angle = 90
-		
 		button_state = keys[pygame.K_x]
-		if(button_state and (self.rapid_fire or not self.shoot_button_state)):
-			bullet_controller.player_shoot(self.aim_cursor.position, angle, self.gun_speed, self.gun_damage)
-			if(self.state == 0):
-				self.state = 10
-				self.set_animation()
-			if(not self.state == 1):
-				self.animations.play()
-			self.shot_timer = self.shot_interval
+		if(self.shot_timer > 0):
+			if(button_state and (not self.rapid_fire and not self.shoot_button_state)):
+				self.shoot_buffer = True
+			self.shoot_button_state = button_state
+			return
+		else:
+			if(self.state == 3 or self.state == 5 or self.state == 7):
+				angle = self.aim_cursor.direction
+			else:
+				angle = 90
+			# Spread
+			if(self.state == 1):
+				spread_coeff = max(self.walk_spread, (self.spread_timer / self.spread_interval))
+			else:
+				spread_coeff = (self.spread_timer / self.spread_interval)
+			spread_range = ((self.spread_angle_min * (1 - spread_coeff)) + (self.spread_angle_max * spread_coeff))
+			angle += (random.random() - 0.5) * spread_range
+		
+			
+			if(button_state and (self.rapid_fire or not self.shoot_button_state)) or (self.shoot_buffer):
+				bullet_controller.player_shoot(self.aim_cursor.position, angle, self.gun_speed, self.gun_damage)
+				self.spread_timer = self.spread_interval
+				if(self.state == 0):
+					self.state = 10
+					self.set_animation()
+				if(not self.state == 1):
+					self.animations.play()
+				self.shot_timer = self.shot_interval
+				if(self.shoot_buffer):
+					self.shoot_buffer = False
 		self.shoot_button_state = button_state
 
 class BulletController:
@@ -704,6 +1348,7 @@ class BulletController:
 			i.update(delta_time)
 			if i.is_outside_screen():
 				self.player_bullets.remove(i)
+				continue
 			for h in i.hitboxes:
 				if tilemap.collide_check_high(h):
 					self.player_bullets.remove(i)
@@ -712,19 +1357,20 @@ class BulletController:
 			i.update(delta_time)
 			if i.is_outside_screen():
 				self.enemy_bullets.remove(i)
+				continue
 			for h in i.hitboxes:
-				if tilemap.collide_check(h):
+				if tilemap.collide_check_high(h):
 					self.enemy_bullets.remove(i)
 					break
 	
-	def check_collision_withenemybul(self, rect):
+	def collide_enemy(self, rect):
 		bullets = []
 		for i in self.enemy_bullets:
 			if i.check_collision(rect):
 				bullets.append(i)
 		return bullets
 	
-	def check_collision_withplayerbul(self, rect):
+	def collide_player(self, rect):
 		bullets = []
 		for i in self.player_bullets:
 			if i.check_collision(rect):
@@ -744,7 +1390,11 @@ class BulletController:
 		for i in self.player_bullets:
 			i.draw(dest)
 	
-	
+	def scroll(self, y):
+		for i in self.player_bullets:
+			i.scroll(y)
+		for i in self.enemy_bullets:
+			i.scroll(y)
 		
 # compute_direction: Computes the direction of a velocity vector
 def compute_direction(velocity):
@@ -757,6 +1407,17 @@ def compute_direction(velocity):
 		else:
 			return -1
 
+def get_scroll_amount(player, tilemap):
+	playerpos = player.animations.get_position()[1]
+	#print(playerpos, tilemap.scroll_position)
+	if(playerpos < 120 and tilemap.scroll_position > 0):
+		if(tilemap.scroll_position > playerpos - 120):
+			return int(-(playerpos - 120))
+		else:
+			return int(tilemap.scroll_position)
+	else:
+		return 0
+
 def main():
 	pygame.init() # initialize pygame
 	clock = pygame.time.Clock() # create a Clock object for timing
@@ -767,13 +1428,25 @@ def main():
 	alice = Player()
 	alice.moveto(120, 100)
 	bullet_con = BulletController()
+	enemy_con = EnemyController("enemies-1-0.dat", tilemap.scroll_position)
+	random.seed()
 	while(True):
+		# Update
 		delta_time = clock.tick(60) / 1000.0 # grab the time passed since last frame
 		bullet_con.update_all(delta_time, tilemap)
-		alice.update(delta_time, tilemap)
+		enemy_con.update_all(delta_time, bullet_con, tilemap, alice)
+		alice.update(delta_time, tilemap, bullet_con)
 		alice.shoot_ifbuttonpressed(bullet_con)
+		scroll = get_scroll_amount(alice, tilemap)
+		if(scroll > 0):
+			bullet_con.scroll(scroll)
+			alice.scroll(scroll)
+			tilemap.scroll(scroll)
+			enemy_con.scroll_all(scroll)
+		# Draw
 		imgbuffer.fill((0, 0, 0)) # fill the buffer with black pixels
 		tilemap.draw_ground(imgbuffer) # draw the ground tile layer
+		enemy_con.draw_all(imgbuffer)
 		alice.draw(imgbuffer) # draw the character
 		bullet_con.draw_all(imgbuffer)
 		window.blit(pygame.transform.scale(imgbuffer, (768, 672)), (0, 0)) # blit our buffer to the main window
@@ -782,5 +1455,6 @@ def main():
 			if(event.type == pygame.QUIT):
 				pygame.quit() # quit the game
 				sys.exit()
-	
+
+
 if __name__ == '__main__': main()
