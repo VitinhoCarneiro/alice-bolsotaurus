@@ -219,6 +219,11 @@ class AimCursor:
 		self.direction += delta
 		self.update_vector()
 	
+	def set_direction(self, angle):
+		self.direction = angle
+		self.update_vector()
+		
+		
 	def draw(self, dest):
 		if not self.showing:
 			return
@@ -272,11 +277,11 @@ class TilemapHandler:
 		if(self.collide_to_tile(hitbox, [map_pos[0], map_pos[1] - 1])):
 			# Collision on the top
 			collided = True
-			correction_vector[1] -= hitbox.top - ((map_pos[1] - 1) * 16 + 16 - self.scroll_position)
+			correction_vector[1] -= hitbox.top - ((map_pos[1] - 1) * 16 + 16 - int(self.scroll_position))
 		elif(self.collide_to_tile(hitbox, [map_pos[0], map_pos[1] + 1])):
 			# Collision on the bottom
 			collided = True
-			correction_vector[1] -= hitbox.bottom - ((map_pos[1] + 1) * 16 - self.scroll_position)
+			correction_vector[1] -= hitbox.bottom - ((map_pos[1] + 1) * 16 - int(self.scroll_position))
 		if(collided):
 			#print(correction_vector)
 			return correction_vector
@@ -439,7 +444,15 @@ class TilemapHandler:
 	
 	def get_obstacle_value(self, hitbox):
 		tile = [int(hitbox.centerx / 16), int((hitbox.centery + self.scroll_position) / 16) - 1]
-		close_enough = (hitbox.top - tile[1] * 16 + 16 - self.scroll_position) < 2 and (hitbox.left - tile[0] * 16) > -2 and (hitbox.right - tile[0] * 16 - 16) < 2
+		if(tile[0] > 0):
+			ltile = self.collision_map[self.tilemap[tile[1]][tile[0] - 1]]
+		else:
+			ltile = 0
+		if(tile[0] < 16):
+			rtile = self.collision_map[self.tilemap[tile[1]][tile[0] + 1]]
+		else:
+			rtile = 0
+		close_enough = (hitbox.top - tile[1] * 16 + 16 - self.scroll_position) < 2 and ((hitbox.left - tile[0] * 16) > -2 or ltile == 1) and ((hitbox.right - tile[0] * 16 - 16) < 2 or rtile == 1)
 		#print("close enough?", close_enough, hitbox.top - tile[1] * 16 + 16, hitbox.left - tile[0] * 16, hitbox.right - tile[0] * 16 + 16)
 		if(tile[0] < 0 or tile[0] > 15 or tile[1] < 0 or tile[1] >= len(self.tilemap)):
 			return -1, False
@@ -613,6 +626,7 @@ class Guard(Enemy):
 		self.movement_stack = []
 		self.moving = False
 		self.stuck_offscreen = False
+		self.points = 300
 		
 		self.ai_state = 0
 		self.cyclic_ai_states = 1
@@ -727,6 +741,8 @@ class Guard(Enemy):
 					self.walk_speed = self.running_speed
 				else:
 					self.walk_speed = self.walking_speed
+				self.animations.animations[self.animations.curr_animation].frametime = self.walk_speed / 180
+				self.animations.play()
 				self.walk_frame_count = self.walk_speed
 			if(self.walk_frame_count > 0):
 				xpos = (((self.current_tile[0] * self.walk_frame_count) + (self.intended_path[0] * (self.walk_speed - self.walk_frame_count))) / self.walk_speed) * 16 
@@ -738,53 +754,10 @@ class Guard(Enemy):
 				self.moving = False
 				self.running = False
 				self.current_tile = self.intended_path
-				self.intended_path = []
-			
-		#TODO - Remove this junk
-		"""
-		current_pos = self.animations.get_position()
-		actual_tile = [(current_pos[0] + 8 - ((current_pos[0] + 8) % 16)) / 16, (current_pos[1] + 8 - ((current_pos[1] + 8) % 16)) / 16] 
-		#print(self, "path length =", len(self.intended_path))
-		if(not self.intended_path == []):
-			if(not self.moving):
-				self.moving = True
-				if(not self.intended_path == self.current_tile):
-					#print(self, "tile", self.current_tile, "path", self.intended_path, "|")
-					if(self.current_tile[0] > self.intended_path[0]):
-						self.velocity[0] = -self.walk_speed
-					elif(self.current_tile[0] < self.intended_path[0]):
-						self.velocity[0] = self.walk_speed
-					else:
-						self.velocity[0] = 0
-					if(self.current_tile[1] > self.intended_path[1]):
-						self.velocity[1] = -self.walk_speed
-					elif(self.current_tile[1] < self.intended_path[1]):
-						self.velocity[1] = self.walk_speed
-					else:
-						self.velocity[1] = 0
-					
-					
-				correction_vector = tilemap.collide_vecproj(self.get_coll_hitbox(), self.velocity)
-				if(not correction_vector == [0, 0]):
-					self.velocity = [0, 0]
-					self.animations.move_absolute(correction_vector)
-					self.moving = False
-				
-			
-			if(abs(((current_pos[0] + 8) % 16) - 8) < 1 and abs(((current_pos[1] + 16) % 16) - 8) < 1):
-				#self.current_tile = [int((current_pos[0] + 8 - ((current_pos[0] + 8) % 16)) / 16), int((current_pos[1] + 8 + tilemap.scroll_position - ((current_pos[1] + 8) % 16)) / 16)]
-				self.current_tile = [int((current_pos[0] + 8) / 16), int((current_pos[1] + 8 + tilemap.scroll_position) / 16)]
-				if(self.current_tile == self.intended_path):
-					print(self, "hit waypoint", self.intended_path)
-					self.velocity = [0, 0]
-					self.moving = False
-					self.intended_path = []
-		
-			if(self.moving):
-				self.animations.move(self.velocity, delta_time)
-		"""
-			
-			
+				self.intended_path = []	
+		else:
+			self.animations.stop()
+		self.animations.update(delta_time)
 	
 	def lookat_tile(self, delta, tilemap, enemy_controller):
 		#print(self, "lookingat", self.current_tile[0] + delta[0], self.current_tile[1] + delta[1])
@@ -796,6 +769,8 @@ class Guard(Enemy):
 	
 	def try_movement(self, delta, tilemap, enemy_controller):
 		if(len(self.movement_stack) == 0):
+			if(delta == [0, -1] and self.animations.get_position()[1] < 0):
+				delta == [0, 1]
 			delta_temp = delta
 			while(not self.lookat_tile(delta_temp, tilemap, enemy_controller) == 0):
 				self.movement_stack.append(delta_temp)
@@ -806,6 +781,7 @@ class Guard(Enemy):
 			self.intended_path = [self.current_tile[0] + delta_temp[0], self.current_tile[1] + delta_temp[1]]
 			if(not (tilemap.get_map_obstacle_value(self.intended_path) == 0)):
 				print("{try_movement} Oops! intended_path", self.intended_path, "is blocked but was chosen as unblocked (???)")
+			self.animations.set_direction(compute_direction(delta))
 			return True
 		else:
 			if(not delta == self.movement_stack[0]):
@@ -820,136 +796,1228 @@ class Guard(Enemy):
 				self.movement_stack.append(delta_temp)
 			self.intended_path = [self.current_tile[0] + delta_temp[0], self.current_tile[1] + delta_temp[1]]
 			self.movement_stack.pop()
+			self.animations.set_direction(compute_direction(delta))
 			return True
 				
 			
 	
 	def rotate_delta_cw(self, delta):
 		return [-delta[1], delta[0]]
-	
-	#TODO - Remove this junk
-	"""
-	def get_path(self, intent, tilemap, enemy_controller):
-		if(intent == [0, 1]):
-			search_delta_list = [[0, 3], [1, 2], [1, 3], [-1, 2], [-1, 3], [0, 2], [2, 2], [2, 3], [-2, 2], [-2, 3], [3, 2], [3, 3], [-3, 2], [-3, 3]]
-		elif(intent == [0, -1]):
-			search_delta_list = [[0, -3], [1, -2], [1, -3], [-1, -2], [-1, -3], [0, -2], [2, -2], [2, -3], [-2, -2], [-2, -3], [3, -2], [3, -3], [-3, -2], [-3, -3]]
-		elif(intent == [1, 0]):
-			search_delta_list = [[3, 0], [2, 1], [3, 1], [2, -1], [3, -1], [2, 0], [2, 2], [3, 2], [2, -2], [3, -2], [2, 3], [3, 3], [2, -3], [3, -3]]
-		elif(intent == [-1, 0]):
-			search_delta_list = [[-3, 0], [-2, 1], [-3, 1], [-2, -1], [-3, -1], [-2, 0], [-2, 2], [-3, 2], [-2, -2], [-3, -2], [-2, 3], [-3, 3], [-2, -3], [-3, -3]]
-		else:
-			return []
-		if(self.lookat_tile(intent, tilemap, enemy_controller)): # If the intended tile is free:
-			return [[self.current_tile[0] + intent[0], self.current_tile[1] + intent[1]]]
-		else:
-			mapgraph = MapGraph(tilemap, enemy_controller, self.current_tile, self.pathfind_range)
-			for tile in search_delta_list:
-				path = mapgraph.get_path_to_delta(tile)
-				if(len(path) > 0):
-					print(self, "at position", self.current_tile, "generated path", path)
-					return path
-	"""
 
+class Soldier(Enemy):
+	def __init__(self, xpos, ypos, scroll_pos, aitype="normal"):
+		Enemy.__init__(self)
+		self.animations.add_animation(Animation("soldier.png", 4, 4, "walk"))
+		self.animations.add_animation(Animation("soldier-damage.png", 1, 1, "damage"))
+		anim = self.animations.add_animation(Animation("soldier-die.png", 3, 1, "dead"))
+		self.health = 125
+		self.shot_timer = 0.0
+		self.shot_interval = 0.4
+		self.gun_speed = 195
+		self.gun_damage = 26
+		anim.looping = False
+		anim.returns = False
+		anim.frametime = 1/8
+		#print("new guard at", xpos * 16, ypos * 16 - scroll_pos)
+		self.animations.moveto(xpos * 16, ypos * 16 - 8 - scroll_pos)
+		self.aitype = aitype
+		if not(aitype == "normal" or aitype == "camper"):
+			print("Error: Invalid ai type", aitype, "for enemy type \"soldier\", defaulting to \"normal\"")
+			self.aitype = "normal"
+		self.current_tile = [xpos, ypos]
+		self.intended_path = [xpos, ypos]
+		self.walk_speed = 25
+		self.walking_speed = 25
+		self.running_speed = 17
+		self.running = False
+		self.walk_frame_count = 0
+		self.velocity = [0, 0]
+		self.movement_stack = []
+		self.moving = False
+		self.stuck_offscreen = False
+		self.points = 450
+		if(random.random() > 0.5):
+			self.xoffset = int(24 + random.random() * 32)
+		else:
+			self.xoffset = int(-24 - random.random() * 32)
+		self.ai_state = 0
+		self.cyclic_ai_states = 2
+		self.ai_timer = 180 + int(random.random() * 240)
+		self.pathfind_range = 3
 		
+		self.item_drops = [["ammo9mm", 0.25], ["syringe", 0.1]]
+	
+	def is_onscreen(self):
+		return self.animations.get_position()[1] > -24 and (not self.is_offscreen()) and (not self.stuck_offscreen)
+	
+	def set_ai_state(self, state, timer = 180, deviation = 240):
+		self.ai_timer = timer + int(random.random() * deviation)
+		self.ai_state = state
+	
+	def set_item_drops(self, dropslist):
+		self.item_drops = dropslist
+		
+	def update(self, delta_time, bullet_controller, tilemap, enemy_controller, player, particle_controller):
+		Enemy.update(self, delta_time, bullet_controller, particle_controller)
+		if(self.dead):
+			return
+		if(not self.is_onscreen()):
+			return
+		# -- AI -- #
+		if(self.ai_timer > 0):
+			self.ai_timer -= 1
+		else:
+			self.ai_timer = 180 + int(random.random() * 240)
+			self.ai_state += 1
+			if(self.ai_state >= self.cyclic_ai_states):
+				self.ai_state = 0
+		if(self.aitype == "normal"):
+			if(not self.moving):
+				if(self.stuck_offscreen):
+					self.stuck_offscreen = False
+				if(player.dead):
+					self.set_ai_state(2, 180, 45)
+				playerpos = player.animations.get_position()
+				if(self.ai_state == 0 or self.ai_state == 1): # Attack
+					if(self.animations.get_position()[1] < 0): # Off-screen - get into the screen area
+						if not(self.try_movement([0, 1], tilemap, enemy_controller)):
+							self.stuck_offscreen = True
+					elif(playerpos[1] - self.animations.get_position()[1] > 96): # Too far away from player - try to get close
+						if(random.random() < 0.05 and playerpos[1] - self.animations.get_position()[1] < 144):
+							self.set_ai_state(3, 120, 90)
+						# Intent: move down
+						#print("{ai-move}", self, "Trying move down")
+						self.try_movement([0, 1], tilemap, enemy_controller)
+						#print("{ai-moved}", self, "intended_path =", self.intended_path)
+						if(self.ai_state == 1): # Shoot while going towards player
+							if(random.random() < 0.08):
+								self.set_ai_state(0, 135, 120)
+							if(self.shot_timer == 0):
+								shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
+								gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
+								bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 32 - 16, self.gun_speed, self.gun_damage)
+								self.shot_timer = self.shot_interval
+							
+					elif(playerpos[1] - self.animations.get_position()[1] > 48): # Close enough
+						if(abs(playerpos[0] + self.xoffset - self.animations.get_position()[0] ) > 28): # Too far away in the X direction
+							if(playerpos[0] + self.xoffset - self.animations.get_position()[0] > 0): # Player is to the right
+								# Intent: move right
+								#print("{ai-move}", self, "Trying move right")
+								self.try_movement([1, 0], tilemap, enemy_controller)
+								#print("{ai-moved}", self, "intended_path =", self.intended_path)
+							else:
+								# Intent: move left
+								#print("{ai-move}", self, "Trying move left")
+								self.try_movement([-1, 0], tilemap, enemy_controller)
+								#print("{ai-moved}", self, "intended_path =", self.intended_path)
+								
+						else: # Try to move up while shooting.
+							self.set_ai_state(4)
+								
+					else: # Too close or below the player - we don't want that
+						# Intent: move up (possibly shoot)
+						self.try_movement([0, -1], tilemap, enemy_controller)
+						if(self.animations.get_position()[1] > 160):
+							self.running = True
+						if(self.ai_state == 1): # Shoot while going towards player
+							if(random.random() < 0.08):
+								self.set_ai_state(0, 135, 120)
+							if(self.shot_timer == 0):
+								shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
+								gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
+								bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 32 - 16, self.gun_speed, self.gun_damage)
+								self.shot_timer = self.shot_interval
+				
+				elif(self.ai_state == 4): # Shoot and retreat {non-cyclic}
+					if(playerpos[1] - self.animations.get_position()[1] > 112):
+						self.set_ai_state(0)
+					else:
+						self.try_movement([0, -1], tilemap, enemy_controller)
+						if(random.random() < 0.08):
+							self.set_ai_state(2, 90, 60)
+						if(self.shot_timer == 0):
+							shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
+							gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
+							bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 24 - 12, self.gun_speed, self.gun_damage)
+							self.shot_timer = self.shot_interval
+						
+				elif(self.ai_state == 2): # Retreat {non-cyclic}
+					if(playerpos[1] - self.animations.get_position()[1] > 112 or playerpos[1] - self.animations.get_position()[1] < 24):
+						self.set_ai_state(0)
+						
+					elif(abs(playerpos[0] - self.animations.get_position()[0]) < 80):
+						if(playerpos[0] - self.animations.get_position()[0] < 0): # Player is to the left
+							# Intent: move right
+							#print("{ai-move}", self, "Trying move right")
+							self.try_movement([1, 0], tilemap, enemy_controller)
+							#print("{ai-moved}", self, "intended_path =", self.intended_path)
+							
+						else:
+							# Intent: move left
+							#print("{ai-move}", self, "Trying move left")
+							self.try_movement([-1, 0], tilemap, enemy_controller)
+							#print("{ai-moved}", self, "intended_path =", self.intended_path)
+				
+				
+				elif(self.ai_state == 3): # Shoot from far away {non-cyclic}
+					if(random.random() < 0.2):
+						self.ai_state = 0
+					if(self.shot_timer == 0):
+						shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
+						gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
+						bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 12 - 6, self.gun_speed, self.gun_damage)
+						self.shot_timer = self.shot_interval
+							
+		# -- Handle movement -- #
+		if(not self.intended_path == []):
+			if(not self.moving):
+				self.moving = True
+				if(self.running):
+					self.walk_speed = self.running_speed
+				else:
+					self.walk_speed = self.walking_speed
+				self.animations.animations[self.animations.curr_animation].frametime = self.walk_speed / 180
+				self.animations.play()
+				self.walk_frame_count = self.walk_speed
+			if(self.walk_frame_count > 0):
+				xpos = (((self.current_tile[0] * self.walk_frame_count) + (self.intended_path[0] * (self.walk_speed - self.walk_frame_count))) / self.walk_speed) * 16 
+				ypos = (((self.current_tile[1] * self.walk_frame_count) + (self.intended_path[1] * (self.walk_speed - self.walk_frame_count))) / self.walk_speed) * 16 - tilemap.scroll_position - 8
+				#print(self, xpos, ypos)
+				self.animations.moveto(xpos, ypos)
+				self.walk_frame_count -= 1
+			else:
+				self.moving = False
+				self.running = False
+				self.current_tile = self.intended_path
+				self.intended_path = []
+		else:
+			self.animations.stop()
+		self.animations.update(delta_time)
+	
+	def lookat_tile(self, delta, tilemap, enemy_controller):
+		#print(self, "lookingat", self.current_tile[0] + delta[0], self.current_tile[1] + delta[1])
+		e = 0
+		if(enemy_controller.check_tile_for_enemy([self.current_tile[0] + delta[0], self.current_tile[1] + delta[1]])):
+			e = -1024
+		#print(tilemap.get_map_obstacle_value([self.current_tile[0] + delta[0], self.current_tile[1] + delta[1]]) + e)
+		return tilemap.get_map_obstacle_value([self.current_tile[0] + delta[0], self.current_tile[1] + delta[1]]) + e
+	
+	def try_movement(self, delta, tilemap, enemy_controller):
+		if(len(self.movement_stack) == 0):
+			if(delta == [0, -1] and self.animations.get_position()[1] < 0):
+				delta == [0, 1]
+			delta_temp = delta
+			while(not self.lookat_tile(delta_temp, tilemap, enemy_controller) == 0):
+				self.movement_stack.append(delta_temp)
+				delta_temp = self.rotate_delta_cw(delta)
+				if(len(self.movement_stack) > 4):
+					#print(self, "stuck")
+					return False
+			self.intended_path = [self.current_tile[0] + delta_temp[0], self.current_tile[1] + delta_temp[1]]
+			if(not (tilemap.get_map_obstacle_value(self.intended_path) == 0)):
+				print("{try_movement} Oops! intended_path", self.intended_path, "is blocked but was chosen as unblocked (???)")
+			self.animations.set_direction(compute_direction(delta))
+			return True
+		else:
+			if(not delta == self.movement_stack[0]):
+				self.movement_stack = []
+				return self.try_movement(delta, tilemap, enemy_controller)
+			delta_temp = self.movement_stack[len(self.movement_stack) - 1]
+			while(not self.lookat_tile(delta_temp, tilemap, enemy_controller) == 0):
+				delta_temp = self.rotate_delta_cw(delta)
+				if(len(self.movement_stack) > 4):
+					#print(self, "stuck")
+					return False
+				self.movement_stack.append(delta_temp)
+			self.intended_path = [self.current_tile[0] + delta_temp[0], self.current_tile[1] + delta_temp[1]]
+			self.movement_stack.pop()
+			self.animations.set_direction(compute_direction(delta))
+			return True
+				
 			
+	
+	def rotate_delta_cw(self, delta):
+		return [-delta[1], delta[0]]
+
+class Gunner(Enemy):
+	def __init__(self, xpos, ypos, scroll_pos, aitype="normal"):
+		Enemy.__init__(self)
+		self.animations.add_animation(Animation("gunner.png", 4, 4, "walk"))
+		self.animations.add_animation(Animation("gunner-damage.png", 1, 1, "damage"))
+		anim = self.animations.add_animation(Animation("gunner-die.png", 3, 1, "dead"))
+		self.health = 80
+		self.shot_timer = 0.0
+		self.shot_interval = 0.2
+		self.gun_speed = 165
+		self.gun_damage = 35
+		anim.looping = False
+		anim.returns = False
+		anim.frametime = 1/8
+		#print("new guard at", xpos * 16, ypos * 16 - scroll_pos)
+		self.animations.moveto(xpos * 16, ypos * 16 - 8 - scroll_pos)
+		self.aitype = aitype
+		if not(aitype == "normal" or aitype == "camper"):
+			print("Error: Invalid ai type", aitype, "for enemy type \"gunner\", defaulting to \"normal\"")
+			self.aitype = "normal"
+		self.current_tile = [xpos, ypos]
+		self.intended_path = [xpos, ypos]
+		self.walk_speed = 36
+		self.walking_speed = 27
+		self.running_speed = 21
+		self.running = False
+		self.walk_frame_count = 0
+		self.velocity = [0, 0]
+		self.movement_stack = []
+		self.moving = False
+		self.stuck_offscreen = False
+		self.points = 600
+		if(random.random() > 0.5):
+			self.xoffset = int(24 + random.random() * 32)
+		else:
+			self.xoffset = int(-24 - random.random() * 32)
+		self.ai_state = 0
+		self.cyclic_ai_states = 1
+		self.ai_timer = 180 + int(random.random() * 240)
+		self.pathfind_range = 3
 		
+		self.item_drops = [["ammo762", 0.35]]
+	
+	def is_onscreen(self):
+		return self.animations.get_position()[1] > -24 and (not self.is_offscreen()) and (not self.stuck_offscreen)
+	
+	def set_ai_state(self, state, timer = 180, deviation = 240):
+		self.ai_timer = timer + int(random.random() * deviation)
+		self.ai_state = state
+	
+	def set_item_drops(self, dropslist):
+		self.item_drops = dropslist
 		
+	def update(self, delta_time, bullet_controller, tilemap, enemy_controller, player, particle_controller):
+		Enemy.update(self, delta_time, bullet_controller, particle_controller)
+		if(self.dead):
+			return
+		if(not self.is_onscreen()):
+			return
+		# -- AI -- #
+		if(self.ai_timer > 0):
+			self.ai_timer -= 1
+		else:
+			self.ai_timer = 180 + int(random.random() * 240)
+			self.ai_state += 1
+			if(self.ai_state >= self.cyclic_ai_states):
+				self.ai_state = 0
+		if(self.aitype == "normal"):
+			if(not self.moving):
+				if(self.stuck_offscreen):
+					self.stuck_offscreen = False
+				if(player.dead):
+					self.set_ai_state(2, 180, 45)
+				playerpos = player.animations.get_position()
+				if(self.ai_state == 0 or self.ai_state == 1): # Attack
+					if(self.ai_state == 1 and random.random() < 0.08):
+						self.set_ai_state(0, 135, 120)
+					if(self.animations.get_position()[1] < 0): # Off-screen - get into the screen area
+						if not(self.try_movement([0, 1], tilemap, enemy_controller)):
+							self.stuck_offscreen = True
+					elif(playerpos[1] - self.animations.get_position()[1] > 96): # Too far away from player - try to get close
+						if(random.random() < 0.05 and playerpos[1] - self.animations.get_position()[1] < 144):
+							self.set_ai_state(3, 120, 90)
+						if(abs(playerpos[0] - self.animations.get_position()[0]) < 20): # Player is in line of fire
+							self.set_ai_state(1, 60, 20)
+						# Intent: move down
+						#print("{ai-move}", self, "Trying move down")
+						self.try_movement([0, 1], tilemap, enemy_controller)
+						#print("{ai-moved}", self, "intended_path =", self.intended_path)
+						if(self.ai_state == 1): # Shoot while going towards player
+							if(self.shot_timer == 0):
+								shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
+								gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
+								bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 32 - 16, self.gun_speed, self.gun_damage)
+								self.shot_timer = self.shot_interval
+							
+					elif(playerpos[1] - self.animations.get_position()[1] > 48): # Close enough
+						if(abs(playerpos[0] + self.xoffset - self.animations.get_position()[0] ) > 56): # Too far away in the X direction
+							if(playerpos[0] + self.xoffset - self.animations.get_position()[0] > 0): # Player is to the right
+								# Intent: move right
+								#print("{ai-move}", self, "Trying move right")
+								self.try_movement([1, 0], tilemap, enemy_controller)
+								#print("{ai-moved}", self, "intended_path =", self.intended_path)
+							else:
+								# Intent: move left
+								#print("{ai-move}", self, "Trying move left")
+								self.try_movement([-1, 0], tilemap, enemy_controller)
+								#print("{ai-moved}", self, "intended_path =", self.intended_path)
+								
+						else: # Shoot, or possibly retreat
+							if(random.random() < 0.04):
+								self.set_ai_state(2, 60, 40)
+							if(self.shot_timer == 0):
+								shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
+								gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
+								bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 32 - 16, self.gun_speed, self.gun_damage)
+								self.shot_timer = self.shot_interval
+								
+					else: # Too close or below the player - we don't want that
+						# Intent: move up (possibly shoot)
+						self.try_movement([0, -1], tilemap, enemy_controller)
+						if(self.animations.get_position()[1] > 160):
+							self.running = True
+						if(self.ai_state == 1): # Shoot while going towards player
+							if(random.random() < 0.05):
+								self.set_ai_state(0, 135, 120)
+							if(self.shot_timer == 0):
+								shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
+								gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
+								bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 32 - 16, self.gun_speed, self.gun_damage)
+								self.shot_timer = self.shot_interval
+				
+				elif(self.ai_state == 4): # Shoot and retreat {non-cyclic}
+					if(playerpos[1] - self.animations.get_position()[1] > 112):
+						self.set_ai_state(0)
+					else:
+						self.try_movement([0, -1], tilemap, enemy_controller)
+						if(random.random() < 0.27):
+							self.set_ai_state(2, 90, 60)
+						if(self.shot_timer == 0):
+							shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
+							gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
+							bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 24 - 12, self.gun_speed, self.gun_damage)
+							self.shot_timer = self.shot_interval
+						
+				elif(self.ai_state == 2): # Retreat {non-cyclic}
+					if(playerpos[1] - self.animations.get_position()[1] > 112 or playerpos[1] - self.animations.get_position()[1] < 24):
+						self.set_ai_state(0)
+						
+					elif(abs(playerpos[0] - self.animations.get_position()[0]) < 80):
+						if(playerpos[0] - self.animations.get_position()[0] < 0): # Player is to the left
+							# Intent: move right
+							#print("{ai-move}", self, "Trying move right")
+							self.try_movement([1, 0], tilemap, enemy_controller)
+							#print("{ai-moved}", self, "intended_path =", self.intended_path)
+							
+						else:
+							# Intent: move left
+							#print("{ai-move}", self, "Trying move left")
+							self.try_movement([-1, 0], tilemap, enemy_controller)
+							#print("{ai-moved}", self, "intended_path =", self.intended_path)
+				
+				
+				elif(self.ai_state == 3): # Shoot from far away {non-cyclic}
+					if(random.random() < 0.1):
+						self.ai_state = 0
+					if(self.shot_timer == 0):
+						shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
+						gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
+						bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 12 - 6, self.gun_speed, self.gun_damage)
+						self.shot_timer = self.shot_interval
+							
+		# -- Handle movement -- #
+		if(not self.intended_path == []):
+			if(not self.moving):
+				self.moving = True
+				if(self.running):
+					self.walk_speed = self.running_speed
+				else:
+					self.walk_speed = self.walking_speed
+				self.animations.animations[self.animations.curr_animation].frametime = self.walk_speed / 180
+				self.animations.play()
+				self.walk_frame_count = self.walk_speed
+			if(self.walk_frame_count > 0):
+				xpos = (((self.current_tile[0] * self.walk_frame_count) + (self.intended_path[0] * (self.walk_speed - self.walk_frame_count))) / self.walk_speed) * 16 
+				ypos = (((self.current_tile[1] * self.walk_frame_count) + (self.intended_path[1] * (self.walk_speed - self.walk_frame_count))) / self.walk_speed) * 16 - tilemap.scroll_position - 8
+				#print(self, xpos, ypos)
+				self.animations.moveto(xpos, ypos)
+				self.walk_frame_count -= 1
+			else:
+				self.moving = False
+				self.running = False
+				self.current_tile = self.intended_path
+				self.intended_path = []
+		else:
+			self.animations.stop()
+		self.animations.update(delta_time)
+	
+	def lookat_tile(self, delta, tilemap, enemy_controller):
+		#print(self, "lookingat", self.current_tile[0] + delta[0], self.current_tile[1] + delta[1])
+		e = 0
+		if(enemy_controller.check_tile_for_enemy([self.current_tile[0] + delta[0], self.current_tile[1] + delta[1]])):
+			e = -1024
+		#print(tilemap.get_map_obstacle_value([self.current_tile[0] + delta[0], self.current_tile[1] + delta[1]]) + e)
+		return tilemap.get_map_obstacle_value([self.current_tile[0] + delta[0], self.current_tile[1] + delta[1]]) + e
+	
+	def try_movement(self, delta, tilemap, enemy_controller):
+		if(len(self.movement_stack) == 0):
+			if(delta == [0, -1] and self.animations.get_position()[1] < 0):
+				delta == [0, 1]
+			delta_temp = delta
+			while(not self.lookat_tile(delta_temp, tilemap, enemy_controller) == 0):
+				self.movement_stack.append(delta_temp)
+				delta_temp = self.rotate_delta_cw(delta)
+				if(len(self.movement_stack) > 4):
+					#print(self, "stuck")
+					return False
+			self.intended_path = [self.current_tile[0] + delta_temp[0], self.current_tile[1] + delta_temp[1]]
+			if(not (tilemap.get_map_obstacle_value(self.intended_path) == 0)):
+				print("{try_movement} Oops! intended_path", self.intended_path, "is blocked but was chosen as unblocked (???)")
+			self.animations.set_direction(compute_direction(delta))
+			return True
+		else:
+			if(not delta == self.movement_stack[0]):
+				self.movement_stack = []
+				return self.try_movement(delta, tilemap, enemy_controller)
+			delta_temp = self.movement_stack[len(self.movement_stack) - 1]
+			while(not self.lookat_tile(delta_temp, tilemap, enemy_controller) == 0):
+				delta_temp = self.rotate_delta_cw(delta)
+				if(len(self.movement_stack) > 4):
+					#print(self, "stuck")
+					return False
+				self.movement_stack.append(delta_temp)
+			self.intended_path = [self.current_tile[0] + delta_temp[0], self.current_tile[1] + delta_temp[1]]
+			self.movement_stack.pop()
+			self.animations.set_direction(compute_direction(delta))
+			return True
+				
+			
+	
+	def rotate_delta_cw(self, delta):
+		return [-delta[1], delta[0]]
+
+
+class Marksman(Enemy):
+	def __init__(self, xpos, ypos, scroll_pos, aitype="normal"):
+		Enemy.__init__(self)
+		self.animations.add_animation(Animation("marksman.png", 4, 4, "walk"))
+		self.animations.add_animation(Animation("marksman-damage.png", 1, 1, "damage"))
+		anim = self.animations.add_animation(Animation("marksman-die.png", 3, 1, "dead"))
+		self.health = 112
+		self.shot_timer = 0.0
+		self.shot_interval = 0.6
+		self.gun_speed = 210
+		self.gun_damage = 51
+		anim.looping = False
+		anim.returns = False
+		anim.frametime = 1/8
+		#print("new guard at", xpos * 16, ypos * 16 - scroll_pos)
+		self.animations.moveto(xpos * 16, ypos * 16 - 8 - scroll_pos)
+		self.aitype = aitype
+		if not(aitype == "normal" or aitype == "camper"):
+			print("Error: Invalid ai type", aitype, "for enemy type \"marksman\", defaulting to \"normal\"")
+			self.aitype = "normal"
+		self.current_tile = [xpos, ypos]
+		self.intended_path = [xpos, ypos]
+		self.walk_speed = 35
+		self.walking_speed = 35
+		self.running_speed = 20
+		self.running = False
+		self.walk_frame_count = 0
+		self.velocity = [0, 0]
+		self.movement_stack = []
+		self.moving = False
+		self.stuck_offscreen = False
+		self.points = 500
+		
+		if(random.random() > 0.5):
+			self.xoffset = int(40 + random.random() * 32)
+		else:
+			self.xoffset = int(-40 - random.random() * 32)
+		
+		self.ai_state = 0
+		self.cyclic_ai_states = 1
+		self.ai_timer = 180 + int(random.random() * 240)
+		self.pathfind_range = 3
+		
+		self.item_drops = [["ammo762", 0.40], ["syringe", 0.16]]
+	
+	def is_onscreen(self):
+		return self.animations.get_position()[1] > -24 and (not self.is_offscreen()) and (not self.stuck_offscreen)
+	
+	def set_ai_state(self, state, timer = 180, deviation = 240):
+		self.ai_timer = timer + int(random.random() * deviation)
+		self.ai_state = state
+	
+	def set_item_drops(self, dropslist):
+		self.item_drops = dropslist
+		
+	def update(self, delta_time, bullet_controller, tilemap, enemy_controller, player, particle_controller):
+		Enemy.update(self, delta_time, bullet_controller, particle_controller)
+		if(self.dead):
+			return
+		if(not self.is_onscreen()):
+			return
+		# -- AI -- #
+		if(self.ai_timer > 0):
+			self.ai_timer -= 1
+		else:
+			self.ai_timer = 150 + int(random.random() * 120)
+			self.ai_state += 1
+			if(self.ai_state >= self.cyclic_ai_states):
+				self.ai_state = 0
+		if(self.aitype == "normal"):
+			if(not self.moving):
+				if(self.stuck_offscreen):
+					self.stuck_offscreen = False
+				if(player.dead):
+					self.set_ai_state(1, 180, 45)
+				playerpos = player.animations.get_position()
+				if(self.ai_state == 0): # Attack
+					if(self.animations.get_position()[1] < 0): # Off-screen - get into the screen area
+						if not(self.try_movement([0, 1], tilemap, enemy_controller)):
+							self.stuck_offscreen = True
+					elif(playerpos[1] - self.animations.get_position()[1] > 176 or self.animations.get_position()[1] < 24): # Too far away from player - try to get close
+						#if(random.random() < 0.05 and playerpos[1] - self.animations.get_position()[1] < 144):
+						#	self.set_ai_state(2, 120, 90)
+						# Intent: move down
+						#print("{ai-move}", self, "Trying move down")
+						self.try_movement([0, 1], tilemap, enemy_controller)
+						#print("{ai-moved}", self, "intended_path =", self.intended_path)
+							
+					elif(playerpos[1] - self.animations.get_position()[1] > 128 or (playerpos[1] - self.animations.get_position()[1] < 128 and self.animations.get_position()[1] < 64)): # Close enough
+						if(abs(playerpos[0] + self.xoffset - self.animations.get_position()[0]) > 48): # Too far away in the X direction
+							if(playerpos[0] + self.xoffset - self.animations.get_position()[0] > 0): # Player is to the right
+								# Intent: move right
+								#print("{ai-move}", self, "Trying move right")
+								self.try_movement([1, 0], tilemap, enemy_controller)
+								#print("{ai-moved}", self, "intended_path =", self.intended_path)
+							else:
+								# Intent: move left
+								#print("{ai-move}", self, "Trying move left")
+								self.try_movement([-1, 0], tilemap, enemy_controller)
+								#print("{ai-moved}", self, "intended_path =", self.intended_path)
+						if(random.random() > 0.5 and self.shot_timer == 0):
+							shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
+							gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
+							bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 30 - 15, self.gun_speed, self.gun_damage)
+							self.shot_timer = self.shot_interval
+								
+						else: # We are going to try to shoot.
+							if(self.shot_timer == 0):
+								shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
+								gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
+								bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 30 - 15, self.gun_speed, self.gun_damage)
+								self.shot_timer = self.shot_interval
+								
+					else: # Too close or below the player - we don't want that
+						# Intent: move up
+						self.try_movement([0, -1], tilemap, enemy_controller)
+						if(self.animations.get_position()[1] > 160):
+							self.running = True
+													
+		# -- Handle movement -- #
+		if(not self.intended_path == []):
+			if(not self.moving):
+				self.moving = True
+				if(self.running):
+					self.walk_speed = self.running_speed
+				else:
+					self.walk_speed = self.walking_speed
+				self.animations.animations[self.animations.curr_animation].frametime = self.walk_speed / 180
+				self.animations.play()
+				self.walk_frame_count = self.walk_speed
+			if(self.walk_frame_count > 0):
+				xpos = (((self.current_tile[0] * self.walk_frame_count) + (self.intended_path[0] * (self.walk_speed - self.walk_frame_count))) / self.walk_speed) * 16 
+				ypos = (((self.current_tile[1] * self.walk_frame_count) + (self.intended_path[1] * (self.walk_speed - self.walk_frame_count))) / self.walk_speed) * 16 - tilemap.scroll_position - 8
+				#print(self, xpos, ypos)
+				self.animations.moveto(xpos, ypos)
+				self.walk_frame_count -= 1
+			else:
+				self.moving = False
+				self.running = False
+				self.current_tile = self.intended_path
+				self.intended_path = []	
+		else:
+			self.animations.stop()
+		self.animations.update(delta_time)
+	
+	def lookat_tile(self, delta, tilemap, enemy_controller):
+		#print(self, "lookingat", self.current_tile[0] + delta[0], self.current_tile[1] + delta[1])
+		e = 0
+		if(enemy_controller.check_tile_for_enemy([self.current_tile[0] + delta[0], self.current_tile[1] + delta[1]])):
+			e = -1024
+		#print(tilemap.get_map_obstacle_value([self.current_tile[0] + delta[0], self.current_tile[1] + delta[1]]) + e)
+		return tilemap.get_map_obstacle_value([self.current_tile[0] + delta[0], self.current_tile[1] + delta[1]]) + e
+	
+	def try_movement(self, delta, tilemap, enemy_controller):
+		if(len(self.movement_stack) == 0):
+			if(delta == [0, -1] and self.animations.get_position()[1] < 0):
+				delta == [0, 1]
+			delta_temp = delta
+			while(not self.lookat_tile(delta_temp, tilemap, enemy_controller) == 0):
+				self.movement_stack.append(delta_temp)
+				delta_temp = self.rotate_delta_cw(delta)
+				if(len(self.movement_stack) > 4):
+					#print(self, "stuck")
+					return False
+			self.intended_path = [self.current_tile[0] + delta_temp[0], self.current_tile[1] + delta_temp[1]]
+			if(not (tilemap.get_map_obstacle_value(self.intended_path) == 0)):
+				print("{try_movement} Oops! intended_path", self.intended_path, "is blocked but was chosen as unblocked (???)")
+			self.animations.set_direction(compute_direction(delta))
+			return True
+		else:
+			if(not delta == self.movement_stack[0]):
+				self.movement_stack = []
+				return self.try_movement(delta, tilemap, enemy_controller)
+			delta_temp = self.movement_stack[len(self.movement_stack) - 1]
+			while(not self.lookat_tile(delta_temp, tilemap, enemy_controller) == 0):
+				delta_temp = self.rotate_delta_cw(delta)
+				if(len(self.movement_stack) > 4):
+					#print(self, "stuck")
+					return False
+				self.movement_stack.append(delta_temp)
+			self.intended_path = [self.current_tile[0] + delta_temp[0], self.current_tile[1] + delta_temp[1]]
+			self.movement_stack.pop()
+			self.animations.set_direction(compute_direction(delta))
+			return True
+				
+			
+	
+	def rotate_delta_cw(self, delta):
+		return [-delta[1], delta[0]]
+
+
+class Stalker(Enemy):
+	def __init__(self, xpos, ypos, scroll_pos, aitype="normal"):
+		Enemy.__init__(self)
+		self.animations.add_animation(Animation("stalker.png", 4, 4, "walk"))
+		self.animations.add_animation(Animation("stalker-damage.png", 1, 1, "damage"))
+		anim = self.animations.add_animation(Animation("stalker-die.png", 3, 1, "dead"))
+		self.health = 60
+		self.shot_timer = 0.0
+		self.shot_interval = 0.3
+		self.shot_interval_behind = 0.8
+		self.gun_speed = 210
+		self.gun_damage = 20
+		self.gun_damage_behind = 70
+		anim.looping = False
+		anim.returns = False
+		anim.frametime = 1/8
+		#print("new guard at", xpos * 16, ypos * 16 - scroll_pos)
+		self.animations.moveto(xpos * 16, ypos * 16 - 8 - scroll_pos)
+		self.aitype = aitype
+		if not(aitype == "normal" or aitype == "camper"):
+			print("Error: Invalid ai type", aitype, "for enemy type \"marksman\", defaulting to \"normal\"")
+			self.aitype = "normal"
+		self.current_tile = [xpos, ypos]
+		self.intended_path = [xpos, ypos]
+		self.walk_speed = 22
+		self.walking_speed = 22
+		self.running_speed = 14
+		self.running = False
+		self.walk_frame_count = 0
+		self.velocity = [0, 0]
+		self.movement_stack = []
+		self.moving = False
+		self.stuck_offscreen = False
+		self.points = 500
+		
+		#if(random.random() > 0.5):
+		#	self.xoffset = int(40 + random.random() * 32)
+		#else:
+		#	self.xoffset = int(-40 - random.random() * 32)
+		
+		self.ai_state = 0
+		self.cyclic_ai_states = 1
+		self.ai_timer = 180 + int(random.random() * 240)
+		self.pathfind_range = 3
+		
+		self.item_drops = [["ammo9mm", 0.60], ["syringe", 0.2]]
+	
+	def is_onscreen(self):
+		return self.animations.get_position()[1] > -24 and (not self.is_offscreen()) and (not self.stuck_offscreen)
+	
+	def set_ai_state(self, state, timer = 180, deviation = 240):
+		self.ai_timer = timer + int(random.random() * deviation)
+		self.ai_state = state
+	
+	def set_item_drops(self, dropslist):
+		self.item_drops = dropslist
+		
+	def update(self, delta_time, bullet_controller, tilemap, enemy_controller, player, particle_controller):
+		Enemy.update(self, delta_time, bullet_controller, particle_controller)
+		if(self.dead):
+			return
+		if(not self.is_onscreen()):
+			return
+		# -- AI -- #
+		if(self.ai_timer > 0):
+			self.ai_timer -= 1
+		else:
+			self.ai_timer = 150 + int(random.random() * 120)
+			self.ai_state += 1
+			if(self.ai_state >= self.cyclic_ai_states):
+				self.ai_state = 0
+		if(self.aitype == "normal"):
+			if(not self.moving):
+				if(self.stuck_offscreen):
+					self.stuck_offscreen = False
+				if(player.dead):
+					self.set_ai_state(1, 30, 45)
+				playerpos = player.animations.get_position()
+				if(self.ai_state == 0): # Attack
+					if(self.animations.get_position()[1] < 0): # Off-screen - get into the screen area
+						if not(self.try_movement([0, 1], tilemap, enemy_controller)):
+							self.stuck_offscreen = True
+					elif(playerpos[1] - self.animations.get_position()[1] > -24): # Too far away from player - try to get close
+						if abs(self.animations.get_position()[0] - 128) < 80: # Too far away in the X direction
+							if(self.animations.get_position()[0] > 128): # Is to the right
+								self.try_movement([1, 0], tilemap, enemy_controller)
+							else:
+								self.try_movement([-1, 0], tilemap, enemy_controller)
+						else:
+						#if(random.random() < 0.05 and playerpos[1] - self.animations.get_position()[1] < 144):
+						#	self.set_ai_state(2, 120, 90)
+						# Intent: move down
+						#print("{ai-move}", self, "Trying move down")
+							self.try_movement([0, 1], tilemap, enemy_controller)
+							self.running = True
+						if(random.random() > 0.5 and self.shot_timer == 0):
+							shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
+							gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
+							bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 36 - 18, self.gun_speed, self.gun_damage)
+							self.shot_timer = self.shot_interval
+						#print("{ai-moved}", self, "intended_path =", self.intended_path)
+							
+							
+					elif(self.animations.get_position()[1] < 176): # Close enough
+						self.animations.set_direction(90)
+						if(self.shot_timer == 0):
+							shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
+							gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
+							bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 12 - 6, self.gun_speed, self.gun_damage_behind)
+							self.shot_timer = self.shot_interval_behind
+								
+					else: # Too close or below the player - we don't want that
+						# Intent: move up
+						self.try_movement([0, -1], tilemap, enemy_controller)
+						self.running = True
+						if(self.shot_timer == 0):
+							shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
+							gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
+							bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 40 - 20, self.gun_speed, self.gun_damage_behind)
+							self.shot_timer = self.shot_interval_behind
+				elif(self.ai_state == 1): # Retreat
+					if(self.animations.get_position()[1] > 48):
+						self.try_movement([0, -1], tilemap, enemy_controller)
+													
+		# -- Handle movement -- #
+		if(not self.intended_path == []):
+			if(not self.moving):
+				self.moving = True
+				if(self.running):
+					self.walk_speed = self.running_speed
+				else:
+					self.walk_speed = self.walking_speed
+				self.animations.animations[self.animations.curr_animation].frametime = self.walk_speed / 180
+				self.animations.play()
+				self.walk_frame_count = self.walk_speed
+			if(self.walk_frame_count > 0):
+				xpos = (((self.current_tile[0] * self.walk_frame_count) + (self.intended_path[0] * (self.walk_speed - self.walk_frame_count))) / self.walk_speed) * 16 
+				ypos = (((self.current_tile[1] * self.walk_frame_count) + (self.intended_path[1] * (self.walk_speed - self.walk_frame_count))) / self.walk_speed) * 16 - tilemap.scroll_position - 8
+				#print(self, xpos, ypos)
+				self.animations.moveto(xpos, ypos)
+				self.walk_frame_count -= 1
+			else:
+				self.moving = False
+				self.running = False
+				self.current_tile = self.intended_path
+				self.intended_path = []	
+		else:
+			self.animations.stop()
+		self.animations.update(delta_time)
+	
+	def lookat_tile(self, delta, tilemap, enemy_controller):
+		#print(self, "lookingat", self.current_tile[0] + delta[0], self.current_tile[1] + delta[1])
+		e = 0
+		if(enemy_controller.check_tile_for_enemy([self.current_tile[0] + delta[0], self.current_tile[1] + delta[1]])):
+			e = -1024
+		#print(tilemap.get_map_obstacle_value([self.current_tile[0] + delta[0], self.current_tile[1] + delta[1]]) + e)
+		return tilemap.get_map_obstacle_value([self.current_tile[0] + delta[0], self.current_tile[1] + delta[1]]) + e
+	
+	def try_movement(self, delta, tilemap, enemy_controller):
+		if(len(self.movement_stack) == 0):
+			if(delta == [0, -1] and self.animations.get_position()[1] < 0):
+				delta == [0, 1]
+			delta_temp = delta
+			while(not self.lookat_tile(delta_temp, tilemap, enemy_controller) == 0):
+				self.movement_stack.append(delta_temp)
+				delta_temp = self.rotate_delta_cw(delta)
+				if(len(self.movement_stack) > 4):
+					#print(self, "stuck")
+					return False
+			self.intended_path = [self.current_tile[0] + delta_temp[0], self.current_tile[1] + delta_temp[1]]
+			if(not (tilemap.get_map_obstacle_value(self.intended_path) == 0)):
+				print("{try_movement} Oops! intended_path", self.intended_path, "is blocked but was chosen as unblocked (???)")
+			self.animations.set_direction(compute_direction(delta))
+			return True
+		else:
+			if(not delta == self.movement_stack[0]):
+				self.movement_stack = []
+				return self.try_movement(delta, tilemap, enemy_controller)
+			delta_temp = self.movement_stack[len(self.movement_stack) - 1]
+			while(not self.lookat_tile(delta_temp, tilemap, enemy_controller) == 0):
+				delta_temp = self.rotate_delta_cw(delta)
+				if(len(self.movement_stack) > 4):
+					#print(self, "stuck")
+					return False
+				self.movement_stack.append(delta_temp)
+			self.intended_path = [self.current_tile[0] + delta_temp[0], self.current_tile[1] + delta_temp[1]]
+			self.movement_stack.pop()
+			self.animations.set_direction(compute_direction(delta))
+			return True
+				
+			
+	
+	def rotate_delta_cw(self, delta):
+		return [-delta[1], delta[0]]
+		
+
+class HeavyGuard(Enemy):
+	def __init__(self, xpos, ypos, scroll_pos, aitype="normal"):
+		Enemy.__init__(self)
+		self.animations.add_animation(Animation("heavyguard.png", 4, 4, "walk"))
+		self.animations.add_animation(Animation("heavyguard-damage.png", 1, 1, "damage"))
+		anim = self.animations.add_animation(Animation("heavyguard-die.png", 3, 1, "dead"))
+		self.health = 140
+		self.shot_timer = 0.0
+		self.shot_interval = 0.3
+		self.gun_speed = 195
+		self.gun_damage = 36
+		anim.looping = False
+		anim.returns = False
+		anim.frametime = 1/8
+		#print("new guard at", xpos * 16, ypos * 16 - scroll_pos)
+		self.animations.moveto(xpos * 16, ypos * 16 - 8 - scroll_pos)
+		self.aitype = aitype
+		if not(aitype == "normal" or aitype == "camper"):
+			print("Error: Invalid ai type", aitype, "for enemy type \"heavyguard\", defaulting to \"normal\"")
+			self.aitype = "normal"
+		self.current_tile = [xpos, ypos]
+		self.intended_path = [xpos, ypos]
+		self.walk_speed = 25
+		self.walking_speed = 25
+		self.running_speed = 17
+		self.running = False
+		self.walk_frame_count = 0
+		self.velocity = [0, 0]
+		self.movement_stack = []
+		self.moving = False
+		self.stuck_offscreen = False
+		self.points = 650
+		if(random.random() > 0.5):
+			self.xoffset = int(24 + random.random() * 32)
+		else:
+			self.xoffset = int(-24 - random.random() * 32)
+		self.ai_state = 0
+		self.cyclic_ai_states = 2
+		self.ai_timer = 180 + int(random.random() * 240)
+		self.pathfind_range = 3
+		
+		self.item_drops = [["ammo762", 0.25], ["syringe", 0.1]]
+	
+	def is_onscreen(self):
+		return self.animations.get_position()[1] > -24 and (not self.is_offscreen()) and (not self.stuck_offscreen)
+	
+	def set_ai_state(self, state, timer = 180, deviation = 240):
+		self.ai_timer = timer + int(random.random() * deviation)
+		self.ai_state = state
+	
+	def set_item_drops(self, dropslist):
+		self.item_drops = dropslist
+		
+	def update(self, delta_time, bullet_controller, tilemap, enemy_controller, player, particle_controller):
+		Enemy.update(self, delta_time, bullet_controller, particle_controller)
+		if(self.dead):
+			return
+		if(not self.is_onscreen()):
+			return
+		# -- AI -- #
+		if(self.ai_timer > 0):
+			self.ai_timer -= 1
+		else:
+			self.ai_timer = 180 + int(random.random() * 240)
+			self.ai_state += 1
+			if(self.ai_state >= self.cyclic_ai_states):
+				self.ai_state = 0
+		if(self.aitype == "normal"):
+			if(not self.moving):
+				if(self.stuck_offscreen):
+					self.stuck_offscreen = False
+				if(player.dead):
+					self.set_ai_state(2, 180, 45)
+				playerpos = player.animations.get_position()
+				if(self.ai_state == 0 or self.ai_state == 1): # Attack
+					if(self.animations.get_position()[1] < 0): # Off-screen - get into the screen area
+						if not(self.try_movement([0, 1], tilemap, enemy_controller)):
+							self.stuck_offscreen = True
+					elif(playerpos[1] - self.animations.get_position()[1] > 96): # Too far away from player - try to get close
+						if(random.random() < 0.05 and playerpos[1] - self.animations.get_position()[1] < 144):
+							self.set_ai_state(3, 120, 90)
+						# Intent: move down
+						#print("{ai-move}", self, "Trying move down")
+						self.try_movement([0, 1], tilemap, enemy_controller)
+						#print("{ai-moved}", self, "intended_path =", self.intended_path)
+						if(self.ai_state == 1): # Shoot while going towards player
+							if(random.random() < 0.08):
+								self.set_ai_state(0, 135, 120)
+							if(self.shot_timer == 0):
+								shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
+								gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
+								bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 32 - 16, self.gun_speed, self.gun_damage)
+								self.shot_timer = self.shot_interval
+							
+					elif(playerpos[1] - self.animations.get_position()[1] > 48): # Close enough
+						if(abs(playerpos[0] + self.xoffset - self.animations.get_position()[0] ) > 28): # Too far away in the X direction
+							if(playerpos[0] + self.xoffset - self.animations.get_position()[0] > 0): # Player is to the right
+								# Intent: move right
+								#print("{ai-move}", self, "Trying move right")
+								self.try_movement([1, 0], tilemap, enemy_controller)
+								#print("{ai-moved}", self, "intended_path =", self.intended_path)
+							else:
+								# Intent: move left
+								#print("{ai-move}", self, "Trying move left")
+								self.try_movement([-1, 0], tilemap, enemy_controller)
+								#print("{ai-moved}", self, "intended_path =", self.intended_path)
+								
+						else: # Try to move up while shooting.
+							self.set_ai_state(4)
+								
+					else: # Too close or below the player - we don't want that
+						# Intent: move up (possibly shoot)
+						self.try_movement([0, -1], tilemap, enemy_controller)
+						if(self.animations.get_position()[1] > 160):
+							self.running = True
+						if(self.ai_state == 1): # Shoot while going towards player
+							if(random.random() < 0.08):
+								self.set_ai_state(0, 135, 120)
+							if(self.shot_timer == 0):
+								shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
+								gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
+								bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 32 - 16, self.gun_speed, self.gun_damage)
+								self.shot_timer = self.shot_interval
+				
+				elif(self.ai_state == 4): # Shoot and retreat {non-cyclic}
+					if(playerpos[1] - self.animations.get_position()[1] > 112):
+						self.set_ai_state(0)
+					else:
+						self.try_movement([0, -1], tilemap, enemy_controller)
+						if(random.random() < 0.08):
+							self.set_ai_state(2, 90, 60)
+						if(self.shot_timer == 0):
+							shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
+							gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
+							bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 24 - 12, self.gun_speed, self.gun_damage)
+							self.shot_timer = self.shot_interval
+						
+				elif(self.ai_state == 2): # Retreat {non-cyclic}
+					if(playerpos[1] - self.animations.get_position()[1] > 112 or playerpos[1] - self.animations.get_position()[1] < 24):
+						self.set_ai_state(0)
+						
+					elif(abs(playerpos[0] - self.animations.get_position()[0]) < 80):
+						if(playerpos[0] - self.animations.get_position()[0] < 0): # Player is to the left
+							# Intent: move right
+							#print("{ai-move}", self, "Trying move right")
+							self.try_movement([1, 0], tilemap, enemy_controller)
+							#print("{ai-moved}", self, "intended_path =", self.intended_path)
+							
+						else:
+							# Intent: move left
+							#print("{ai-move}", self, "Trying move left")
+							self.try_movement([-1, 0], tilemap, enemy_controller)
+							#print("{ai-moved}", self, "intended_path =", self.intended_path)
+				
+				
+				elif(self.ai_state == 3): # Shoot from far away {non-cyclic}
+					if(random.random() < 0.2):
+						self.ai_state = 0
+					if(self.shot_timer == 0):
+						shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
+						gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
+						bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 12 - 6, self.gun_speed, self.gun_damage)
+						self.shot_timer = self.shot_interval
+							
+		# -- Handle movement -- #
+		if(not self.intended_path == []):
+			if(not self.moving):
+				self.moving = True
+				if(self.running):
+					self.walk_speed = self.running_speed
+				else:
+					self.walk_speed = self.walking_speed
+				self.animations.animations[self.animations.curr_animation].frametime = self.walk_speed / 180
+				self.animations.play()
+				self.walk_frame_count = self.walk_speed
+			if(self.walk_frame_count > 0):
+				xpos = (((self.current_tile[0] * self.walk_frame_count) + (self.intended_path[0] * (self.walk_speed - self.walk_frame_count))) / self.walk_speed) * 16 
+				ypos = (((self.current_tile[1] * self.walk_frame_count) + (self.intended_path[1] * (self.walk_speed - self.walk_frame_count))) / self.walk_speed) * 16 - tilemap.scroll_position - 8
+				#print(self, xpos, ypos)
+				self.animations.moveto(xpos, ypos)
+				self.walk_frame_count -= 1
+			else:
+				self.moving = False
+				self.running = False
+				self.current_tile = self.intended_path
+				self.intended_path = []
+		else:
+			self.animations.stop()
+		self.animations.update(delta_time)
+	
+	def lookat_tile(self, delta, tilemap, enemy_controller):
+		#print(self, "lookingat", self.current_tile[0] + delta[0], self.current_tile[1] + delta[1])
+		e = 0
+		if(enemy_controller.check_tile_for_enemy([self.current_tile[0] + delta[0], self.current_tile[1] + delta[1]])):
+			e = -1024
+		#print(tilemap.get_map_obstacle_value([self.current_tile[0] + delta[0], self.current_tile[1] + delta[1]]) + e)
+		return tilemap.get_map_obstacle_value([self.current_tile[0] + delta[0], self.current_tile[1] + delta[1]]) + e
+	
+	def try_movement(self, delta, tilemap, enemy_controller):
+		if(len(self.movement_stack) == 0):
+			if(delta == [0, -1] and self.animations.get_position()[1] < 0):
+				delta == [0, 1]
+			delta_temp = delta
+			while(not self.lookat_tile(delta_temp, tilemap, enemy_controller) == 0):
+				self.movement_stack.append(delta_temp)
+				delta_temp = self.rotate_delta_cw(delta)
+				if(len(self.movement_stack) > 4):
+					#print(self, "stuck")
+					return False
+			self.intended_path = [self.current_tile[0] + delta_temp[0], self.current_tile[1] + delta_temp[1]]
+			if(not (tilemap.get_map_obstacle_value(self.intended_path) == 0)):
+				print("{try_movement} Oops! intended_path", self.intended_path, "is blocked but was chosen as unblocked (???)")
+			self.animations.set_direction(compute_direction(delta))
+			return True
+		else:
+			if(not delta == self.movement_stack[0]):
+				self.movement_stack = []
+				return self.try_movement(delta, tilemap, enemy_controller)
+			delta_temp = self.movement_stack[len(self.movement_stack) - 1]
+			while(not self.lookat_tile(delta_temp, tilemap, enemy_controller) == 0):
+				delta_temp = self.rotate_delta_cw(delta)
+				if(len(self.movement_stack) > 4):
+					#print(self, "stuck")
+					return False
+				self.movement_stack.append(delta_temp)
+			self.intended_path = [self.current_tile[0] + delta_temp[0], self.current_tile[1] + delta_temp[1]]
+			self.movement_stack.pop()
+			self.animations.set_direction(compute_direction(delta))
+			return True
+				
+			
+	
+	def rotate_delta_cw(self, delta):
+		return [-delta[1], delta[0]]
+
+
+class Sniper(Enemy):
+	def __init__(self, xpos, ypos, scroll_pos, aitype="normal"):
+		Enemy.__init__(self)
+		self.animations.add_animation(Animation("sniper.png", 4, 4, "walk"))
+		self.animations.add_animation(Animation("sniper-damage.png", 1, 1, "damage"))
+		anim = self.animations.add_animation(Animation("sniper-die.png", 3, 1, "dead"))
+		self.health = 115
+		self.shot_timer = 0.0
+		self.shot_interval = 1.5
+		self.gun_speed = 360
+		self.gun_damage = 85
+		anim.looping = False
+		anim.returns = False
+		anim.frametime = 1/8
+		#print("new guard at", xpos * 16, ypos * 16 - scroll_pos)
+		self.animations.moveto(xpos * 16, ypos * 16 - 8 - scroll_pos)
+		self.aitype = aitype
+		if not(aitype == "normal" or aitype == "camper"):
+			print("Error: Invalid ai type", aitype, "for enemy type \"marksman\", defaulting to \"normal\"")
+			self.aitype = "normal"
+		self.current_tile = [xpos, ypos]
+		self.intended_path = self.current_tile
+		self.moving = False
+		self.stuck_offscreen = False
+		self.points = 500
+		
+		if(random.random() > 0.5):
+			self.xoffset = int(40 + random.random() * 32)
+		else:
+			self.xoffset = int(-40 - random.random() * 32)
+		
+		self.ai_state = 0
+		self.cyclic_ai_states = 2
+		self.ai_timer = 60
+		self.aim_timer = 120 + int(random.random() * 90)
+		self.aim_time = 180
+		self.aim_time_deviation = 120
+		self.aim_angle = 270
+		self.aim_speed = 0.7
+		self.aim_cursor = AimCursor([xpos * 16 + 8, ypos * 16 + 20])
+		self.aim_cursor.showing = False
+		self.aim_cursor.image = load_png("sprites", "aim-laser.png")
+		
+		self.item_drops = []
+	
+	def scroll(self, y):
+		Enemy.scroll(self, y)
+		self.aim_cursor.position = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
+		
+	def draw(self, dest):
+		Enemy.draw(self, dest)
+		if not(self.dead):
+			self.aim_cursor.draw(dest)
+	
+	def is_onscreen(self):
+		return self.animations.get_position()[1] > -24 and (not self.is_offscreen()) and (not self.stuck_offscreen)
+	
+	def set_ai_state(self, state, timer = 180, deviation = 240):
+		self.ai_timer = timer + int(random.random() * deviation)
+		self.ai_state = state
+	
+	def set_item_drops(self, dropslist):
+		self.item_drops = dropslist
+		
+	def update(self, delta_time, bullet_controller, tilemap, enemy_controller, player, particle_controller):
+		Enemy.update(self, delta_time, bullet_controller, particle_controller)
+		if(self.dead):
+			return
+		if(not self.is_onscreen()):
+			return
+		# -- AI -- #
+		if(self.ai_timer > 0):
+			self.ai_timer -= 1
+		else:
+			self.ai_timer = 120 + int(random.random() * 90)
+			self.ai_state += 1
+			if(self.ai_state >= self.cyclic_ai_states):
+				self.ai_state = 0
+		if(self.aitype == "normal"):
+			if(not self.moving):
+				if(self.stuck_offscreen):
+					self.stuck_offscreen = False
+				if(player.dead):
+					self.set_ai_state(0, 60, 30)
+				playerpos = player.animations.get_position()
+				if(self.animations.get_position()[1] < 0):
+					return
+				elif(self.ai_state == 1): # Aim preparation {non-cyclic}
+					self.aim_timer = self.aim_time + int(random.random() * self.aim_time_deviation)
+					self.aim_angle = compute_direction([playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]) + int(random.random() * 60 - 30)
+					self.aim_cursor.set_direction(self.aim_angle)
+					self.set_ai_state(2, 65535, 0)
+				elif(self.ai_state == 2): # Aiming {non-cyclic}
+					self.aim_timer -= 1
+					if(self.aim_timer > 0):
+						self.aim_cursor.showing = True
+						player_direction = compute_direction([playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]])
+						if(self.aim_angle < player_direction):
+							self.aim_angle += self.aim_speed
+						else:
+							self.aim_angle -= self.aim_speed
+						self.aim_cursor.set_direction(self.aim_angle)
+					else:
+						shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
+						gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
+						bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 30 - 15, self.gun_speed, self.gun_damage)
+						self.shot_timer = self.shot_interval
+						self.aim_cursor.showing = False
+						self.set_ai_state(0, 120, 90)
 
 # -- End -- #
 
-#TODO - Remove this junk
-"""
-class MapGraph:
-	def __init__(self, tilemap, enemy_controller, centerpos, radius):
-		print("Building graph", self)
-		self.graph_size = radius * 2 + 1
-		self.radius = radius
-		self.graph = []
-		self.start_node = radius + 1 + self.graph_size * radius - 1
-		self.map_centerpos = centerpos
-		# Build the map graph
-		for i in range(self.graph_size):
-			for j in range(self.graph_size): # Search the area around the center position
-				delta = [i - radius, j - radius]
-				node = []
-				if(tilemap.get_map_obstacle_value([centerpos[0] + delta[0], centerpos[1] + delta[1]]) == 0): # If the node is not an obstacle:
-					ds = [[1, 0], [-1, 0], [0, 1], [0, -1]]
-					diagonalchecking = [[1, 3], [1, 2], [0, 2], [0, 3]]
-					diagonals = [[-1, -1], [-1, 1], [1, 1], [1, -1]]
-					marked = []
-					for n in range(len(ds)):
-						if(not abs(delta[0] + ds[n][0]) > radius and not abs(delta[1] + ds[n][1]) > radius): # If it's not outside the search area
-							if(tilemap.get_map_obstacle_value([centerpos[0] + delta[0] + ds[n][0], centerpos[1] + delta[1] + ds[n][1]]) == 0 
-							and not enemy_controller.check_tile_for_enemy([centerpos[0] + delta[0] + ds[n][0], centerpos[1] + delta[1] + ds[n][1]])): # If this neighbor is not an obstacle:
-								node.append(i + ds[n][0] + (j + ds[n][1]) * (self.graph_size)) # Add this neighbour to the current node
-					for d in diagonalchecking:
-						if(d[0] in marked and d[1] in marked):
-							if(tilemap.get_map_obstacle_value([centerpos[0] + delta[0] + diagonals[d][0], centerpos[1] + delta[1] + diagonals[d][1]]) == 0
-							and not enemy_controller.check_tile_for_enemy([centerpos[0] + delta[0] + diagonals[d][0], centerpos[1] + delta[1] + diagonals[d][1]])): # If this neighbor is not an obstacle:
-								node.append(i + diagonals[d][0] + (j + diagonals[d][1]) * (self.graph_size)) # Add this neighbour to the current node
-				self.graph.append(node)
-		self.best_paths = self.build_paths()
-
-	
-	# build_paths: Uses Djikstra's algorithm to find the best paths from the center of the graph to any node
-	def build_paths(self):
-		distance = [32677] * len(self.graph) # Distance from that node to start node - initialized as "infinity" (an impossible large number)
-		prev_node = [-1] * len(self.graph)
-		unvisited_nodes = []
-		for n in range(len(self.graph)):
-			unvisited_nodes.append(n)
-		
-		distance[self.start_node] = 0
-		prev_node[self.start_node] = -1
-		
-		while(len(unvisited_nodes) > 0):
-			min_distance = 32677
-			current_node = -1
-			for n in unvisited_nodes: # Choose the node with the lowest distance value (in the beginning, that will be the start node)
-				if(distance[n] < min_distance):
-					current_node = n
-			if(current_node == -1):
-				break # This means there are no more nodes to search, because only obstacles are left.
-			unvisited_nodes.remove(current_node)
-			
-			for nn in self.graph[current_node]:
-				alt = distance[current_node] + self.get_length(current_node, nn)
-				if(alt < distance[nn]):
-					distance[nn] = alt
-					prev_node[nn] = current_node
-		
-		return prev_node
-	
-	def get_path_to_delta(self, delta):
-		node = delta[0] + self.radius + (delta[1] + self.radius) * self.graph_size
-		current_node = node
-		path = [self.convert_node_to_coord(current_node)]
-		while(self.best_paths[current_node] > -1):
-			path.insert(0, self.convert_node_to_coord(self.best_paths[current_node]))
-			current_node = self.best_paths[current_node]
-		return path
-	
-	def convert_node_to_coord(self, node):
-		dx = node % self.graph_size - self.radius
-		dy = int((node - dx) / self.graph_size - self.radius)
-		print("graph: node", node, "generated delta", dx, dy, "and coord", [self.map_centerpos[0] + dx, self.map_centerpos[1] + dy])
-		return [self.map_centerpos[0] + dx, self.map_centerpos[1] + dy]
-		
-	def get_length(self, node_a, node_b):
-		ax = node_a % self.graph_size
-		ay = node_a - ax / self.graph_size
-		bx = node_b % self.graph_size
-		by = node_b - bx / self.graph_size
-		if((abs(ax - bx) == 1 and abs(ay - by) == 0) or (abs(ax - bx) == 0 and abs(ay - by) == 1)):
-			return 2
-		elif (abs(ax - bx) == 1 and abs(ay - by) == 1):
-			return 3
-		else:
-			return 2 * math.sqrt((ax - bx) ** 2 + (ay - by) ** 2)
-
-"""
-		
 				
 
 class EnemyController:
@@ -981,8 +2049,23 @@ class EnemyController:
 					enemydict[l_keyvalue[0]] = l_keyvalue[1]
 					l = f.readline()
 				if(enemydict["type"] == "guard\n"):
-					#print("guard")
-					self.enemies.append(Guard(int(enemydict["xpos"]), int(enemydict["ypos"]), map_scroll))
+					enemy = Guard(int(enemydict["xpos"]), int(enemydict["ypos"]), map_scroll)
+				elif(enemydict["type"] == "soldier\n"):
+					enemy = Soldier(int(enemydict["xpos"]), int(enemydict["ypos"]), map_scroll)
+				elif(enemydict["type"] == "gunner\n"):
+					enemy = Gunner(int(enemydict["xpos"]), int(enemydict["ypos"]), map_scroll)
+				elif(enemydict["type"] == "marksman\n"):
+					enemy = Marksman(int(enemydict["xpos"]), int(enemydict["ypos"]), map_scroll)
+				elif(enemydict["type"] == "stalker\n"):
+					enemy = Stalker(int(enemydict["xpos"]), int(enemydict["ypos"]), map_scroll)
+				elif(enemydict["type"] == "heavyguard\n"):
+					enemy = HeavyGuard(int(enemydict["xpos"]), int(enemydict["ypos"]), map_scroll)
+				elif(enemydict["type"] == "sniper\n"):
+					enemy = Sniper(int(enemydict["xpos"]), int(enemydict["ypos"]), map_scroll)
+				if("health" in enemydict):
+					enemy.health = enemydict["health"]
+				self.enemies.append(enemy)
+				
 				l = f.readline()
 			else:
 				l = f.readline()
@@ -1154,14 +2237,14 @@ class SMG(Weapon):
 class WeaponController:
 	def __init__(self):
 		self.weapons = [Pistol(), AssaultRifle(), M1Garand(), SMG()]
-		self.owned_weapons = [True, False, False, False] # For debug only! #TODO Uncomment this after debugging
-		#self.owned_weapons = [True, True, True, True] # For debug only! #TODO Remove this after debugging
+		#self.owned_weapons = [True, False, False, False] # For debug only! #TODO Uncomment this after debugging
+		self.owned_weapons = [True, True, True, True] # For debug only! #TODO Remove this after debugging
 		self.current_weapon = 0
 		self.grenades = 0
 		self.switch_timer = 0
 		self.switch_time = 0.3
-		self.ammo = [0, 0] # Indicates the amount of bullets in the inventory (for each type of bullet) #TODO Uncomment this after debugging
-		#self.ammo = [800, 800] #TODO Remove this after debugging
+		#self.ammo = [26, 0] # Indicates the amount of bullets in the inventory (for each type of bullet) #TODO Uncomment this after debugging
+		self.ammo = [800, 800] #TODO Remove this after debugging
 		self.no_bullets = False
 	
 	def shoot(self):
@@ -1708,7 +2791,7 @@ class Player:
 		keys = pygame.key.get_pressed()
 		if(keys[pygame.K_s]):
 			if(self.syringe_count > 0 and self.syringe_timer == 0):
-				if(self.heal(15)):
+				if(self.heal(40)):
 					self.syringe_count -= 1
 					print("Used a syringe. Syringes left:", self.syringe_count)
 					self.syringe_timer = self.syringe_interval
@@ -1802,7 +2885,7 @@ class AmmoBox762(Item):
 		return True
 
 class Medkit(Item):
-	def __init__(self, tile, map_scroll, health = 20, destroy_timer = 15):
+	def __init__(self, tile, map_scroll, health = 33, destroy_timer = 15):
 		Item.__init__(self, "item-medkit_small.png", tile, map_scroll, destroy_timer)
 		self.health = health
 	
@@ -1815,7 +2898,7 @@ class Medkit(Item):
 			return False
 
 class Medpack(Item):
-	def __init__(self, tile, map_scroll, health = 60, destroy_timer = 15):
+	def __init__(self, tile, map_scroll, health = 100, destroy_timer = 15):
 		Item.__init__(self, "item-medkit_large.png", tile, map_scroll, destroy_timer)
 		self.health = health
 	
@@ -1872,9 +2955,9 @@ class ItemController:
 				elif(itemdict["type"] == "ammo762\n"):
 					self.items.append(AmmoBox762([int(itemdict["xpos"]), int(itemdict["ypos"])], map_scroll, int(itemdict["ammo"]), 3600))
 				elif(itemdict["type"] == "medkit\n"):
-					self.items.append(Medkit([int(itemdict["xpos"]), int(itemdict["ypos"])], map_scroll, 20, 3600))
+					self.items.append(Medkit([int(itemdict["xpos"]), int(itemdict["ypos"])], map_scroll, 33, 3600))
 				elif(itemdict["type"] == "medpack\n"):
-					self.items.append(Medpack([int(itemdict["xpos"]), int(itemdict["ypos"])], map_scroll, 60, 3600))
+					self.items.append(Medpack([int(itemdict["xpos"]), int(itemdict["ypos"])], map_scroll, 100, 3600))
 				elif(itemdict["type"] == "syringe\n"):
 					self.items.append(Syringe([int(itemdict["xpos"]), int(itemdict["ypos"])], map_scroll, 3600))
 				l = f.readline()

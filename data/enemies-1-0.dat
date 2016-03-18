@@ -1,17 +1,17 @@
 enemy:
-type=guard
+type=sniper
 ypos=75
 xpos=4
 :end
 
 enemy:
-type=guard
+type=heavyguard
 ypos=75
 xpos=12
 :end
 
 enemy:
-type=guard
+type=soldier
 ypos=65
 xpos=4
 :end
@@ -23,13 +23,13 @@ xpos=12
 :end
 
 enemy:
-type=guard
+type=gunner
 ypos=50
 xpos=4
 :end
 
 enemy:
-type=guard
+type=marksman
 ypos=50
 xpos=12
 :end
@@ -41,19 +41,19 @@ xpos=4
 :end
 
 enemy:
-type=guard
+type=stalker
 ypos=40
 xpos=8
 :end
 
 enemy:
-type=guard
+type=stalker
 ypos=40
 xpos=12
 :end
 
 enemy:
-type=guard
+type=heavyguard
 ypos=28
 xpos=4
 :end
@@ -65,13 +65,13 @@ xpos=12
 :end
 
 enemy:
-type=guard
+type=gunner
 ypos=28
 xpos=8
 :end
 
 enemy:
-type=guard
+type=marksman
 ypos=31
 xpos=8
 :end
@@ -83,32 +83,32 @@ xpos=4
 :end
 
 enemy:
-type=guard
+type=gunner
 ypos=14
 xpos=12
 :end
 
 
 enemy:
-type=guard
+type=heavyguard
 ypos=21
 xpos=4
 :end
 
 enemy:
-type=guard
+type=soldier
 ypos=21
 xpos=12
 :end
 
 enemy:
-type=guard
+type=marksman
 ypos=4
 xpos=4
 :end
 
 enemy:
-type=guard
+type=soldier
 ypos=4
 xpos=12
 :end
@@ -120,19 +120,19 @@ xpos=8
 :end
 
 enemy:
-type=guard
+type=gunner
 ypos=6
 xpos=12
 :end
 
 enemy:
-type=guard
+type=sniper
 ypos=6
 xpos=4
 :end
 
 enemy:
-type=guard
+type=soldier
 ypos=6
 xpos=8
 :end
