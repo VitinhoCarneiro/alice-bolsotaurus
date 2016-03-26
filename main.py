@@ -514,7 +514,7 @@ class Enemy:
 		self.blink_timer = 0.6
 		self.taking_damage = False
 	
-	def update(self, delta_time, bullet_controller, particle_controller):
+	def update(self, delta_time, bullet_controller, particle_controller, sound_controller):
 		if(self.dead):
 			if(not self.deadanim):
 				self.animations.set_animation("dead")
@@ -536,7 +536,7 @@ class Enemy:
 		if(self.taking_damage):
 			self.taking_damage = False
 			self.animations.set_animation("walk")
-		self.check_for_damage(bullet_controller, particle_controller)
+		self.check_for_damage(bullet_controller, particle_controller, sound_controller)
 		self.shot_timer -= delta_time
 		if(self.shot_timer <= 0):
 			self.shot_timer = 0
@@ -550,7 +550,7 @@ class Enemy:
 		topleft = self.animations.get_position()
 		return pygame.Rect(topleft[0] + 15, topleft[1] + 1, 16, 9)
 		
-	def take_damage(self, damage, particle_controller):
+	def take_damage(self, damage, particle_controller, sound_controller):
 		if(self.dead):
 			return
 		self.health -= damage
@@ -563,6 +563,9 @@ class Enemy:
 			particle_controller.spawn_particle("blood-small", [self.animations.get_position()[0], self.animations.get_position()[1] + 4])
 		if(self.health <= 0):
 			self.die()
+			sound_controller.play_sound("".join(["enemy-die", str(int(random.random() * 2 + 1))]))
+		else:
+			sound_controller.play_sound("".join(["enemy-damage", str(int(random.random() * 3 + 1))]))
 	
 	def die(self):
 		if(self.dead):
@@ -578,16 +581,16 @@ class Enemy:
 		return self.animations.get_position()[1] > 224
 	
 	
-	def check_for_damage(self, bullet_controller, particle_controller):
+	def check_for_damage(self, bullet_controller, particle_controller, sound_controller):
 		if(self.dead):
 			return
 		hitbox = self.get_hitbox()
 		bullets = bullet_controller.collide_player(hitbox)
 		for bullet in bullets:
-			self.take_damage(bullet.damage, particle_controller)
+			self.take_damage(bullet.damage, particle_controller, sound_controller)
 		melee = bullet_controller.collide_melee_player(hitbox)
 		for m in melee:
-			self.take_damage(m, particle_controller)
+			self.take_damage(m, particle_controller, sound_controller)
 		bullet_controller.destroy(bullets)
 	
 	def scroll(self, y):
@@ -645,8 +648,8 @@ class Guard(Enemy):
 	def set_item_drops(self, dropslist):
 		self.item_drops = dropslist
 		
-	def update(self, delta_time, bullet_controller, tilemap, enemy_controller, player, particle_controller):
-		Enemy.update(self, delta_time, bullet_controller, particle_controller)
+	def update(self, delta_time, bullet_controller, tilemap, enemy_controller, player, particle_controller, sound_controller):
+		Enemy.update(self, delta_time, bullet_controller, particle_controller, sound_controller)
 		if(self.dead):
 			return
 		if(not self.is_onscreen()):
@@ -698,6 +701,7 @@ class Guard(Enemy):
 								shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
 								gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
 								bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 30 - 15, self.gun_speed, self.gun_damage)
+								sound_controller.play_sound("enemy-shoot-weak")
 								self.shot_timer = self.shot_interval
 								
 					else: # Too close or below the player - we don't want that
@@ -731,6 +735,7 @@ class Guard(Enemy):
 						shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
 						gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
 						bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 12 - 6, self.gun_speed, self.gun_damage)
+						sound_controller.play_sound("enemy-shoot-weak")
 						self.shot_timer = self.shot_interval
 							
 		# -- Handle movement -- #
@@ -857,8 +862,8 @@ class Soldier(Enemy):
 	def set_item_drops(self, dropslist):
 		self.item_drops = dropslist
 		
-	def update(self, delta_time, bullet_controller, tilemap, enemy_controller, player, particle_controller):
-		Enemy.update(self, delta_time, bullet_controller, particle_controller)
+	def update(self, delta_time, bullet_controller, tilemap, enemy_controller, player, particle_controller, sound_controller):
+		Enemy.update(self, delta_time, bullet_controller, particle_controller, sound_controller)
 		if(self.dead):
 			return
 		if(not self.is_onscreen()):
@@ -896,6 +901,7 @@ class Soldier(Enemy):
 								shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
 								gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
 								bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 32 - 16, self.gun_speed, self.gun_damage)
+								sound_controller.play_sound("enemy-shoot-weak")
 								self.shot_timer = self.shot_interval
 							
 					elif(playerpos[1] - self.animations.get_position()[1] > 48): # Close enough
@@ -926,6 +932,7 @@ class Soldier(Enemy):
 								shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
 								gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
 								bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 32 - 16, self.gun_speed, self.gun_damage)
+								sound_controller.play_sound("enemy-shoot-weak")
 								self.shot_timer = self.shot_interval
 				
 				elif(self.ai_state == 4): # Shoot and retreat {non-cyclic}
@@ -939,6 +946,7 @@ class Soldier(Enemy):
 							shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
 							gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
 							bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 24 - 12, self.gun_speed, self.gun_damage)
+							sound_controller.play_sound("enemy-shoot-weak")
 							self.shot_timer = self.shot_interval
 						
 				elif(self.ai_state == 2): # Retreat {non-cyclic}
@@ -966,6 +974,7 @@ class Soldier(Enemy):
 						shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
 						gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
 						bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 12 - 6, self.gun_speed, self.gun_damage)
+						sound_controller.play_sound("enemy-shoot-weak")
 						self.shot_timer = self.shot_interval
 							
 		# -- Handle movement -- #
@@ -1092,8 +1101,8 @@ class Gunner(Enemy):
 	def set_item_drops(self, dropslist):
 		self.item_drops = dropslist
 		
-	def update(self, delta_time, bullet_controller, tilemap, enemy_controller, player, particle_controller):
-		Enemy.update(self, delta_time, bullet_controller, particle_controller)
+	def update(self, delta_time, bullet_controller, tilemap, enemy_controller, player, particle_controller, sound_controller):
+		Enemy.update(self, delta_time, bullet_controller, particle_controller, sound_controller)
 		if(self.dead):
 			return
 		if(not self.is_onscreen()):
@@ -1133,6 +1142,7 @@ class Gunner(Enemy):
 								shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
 								gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
 								bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 32 - 16, self.gun_speed, self.gun_damage)
+								sound_controller.play_sound("enemy-shoot-weak")
 								self.shot_timer = self.shot_interval
 							
 					elif(playerpos[1] - self.animations.get_position()[1] > 48): # Close enough
@@ -1155,6 +1165,7 @@ class Gunner(Enemy):
 								shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
 								gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
 								bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 32 - 16, self.gun_speed, self.gun_damage)
+								sound_controller.play_sound("enemy-shoot-weak")
 								self.shot_timer = self.shot_interval
 								
 					else: # Too close or below the player - we don't want that
@@ -1169,6 +1180,7 @@ class Gunner(Enemy):
 								shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
 								gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
 								bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 32 - 16, self.gun_speed, self.gun_damage)
+								sound_controller.play_sound("enemy-shoot-weak")
 								self.shot_timer = self.shot_interval
 				
 				elif(self.ai_state == 4): # Shoot and retreat {non-cyclic}
@@ -1182,6 +1194,7 @@ class Gunner(Enemy):
 							shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
 							gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
 							bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 24 - 12, self.gun_speed, self.gun_damage)
+							sound_controller.play_sound("enemy-shoot-weak")
 							self.shot_timer = self.shot_interval
 						
 				elif(self.ai_state == 2): # Retreat {non-cyclic}
@@ -1338,8 +1351,8 @@ class Marksman(Enemy):
 	def set_item_drops(self, dropslist):
 		self.item_drops = dropslist
 		
-	def update(self, delta_time, bullet_controller, tilemap, enemy_controller, player, particle_controller):
-		Enemy.update(self, delta_time, bullet_controller, particle_controller)
+	def update(self, delta_time, bullet_controller, tilemap, enemy_controller, player, particle_controller, sound_controller):
+		Enemy.update(self, delta_time, bullet_controller, particle_controller, sound_controller)
 		if(self.dead):
 			return
 		if(not self.is_onscreen()):
@@ -1387,6 +1400,7 @@ class Marksman(Enemy):
 							shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
 							gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
 							bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 30 - 15, self.gun_speed, self.gun_damage)
+							sound_controller.play_sound("enemy-shoot-strong")
 							self.shot_timer = self.shot_interval
 								
 						else: # We are going to try to shoot.
@@ -1394,6 +1408,7 @@ class Marksman(Enemy):
 								shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
 								gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
 								bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 30 - 15, self.gun_speed, self.gun_damage)
+								sound_controller.play_sound("enemy-shoot-strong")
 								self.shot_timer = self.shot_interval
 								
 					else: # Too close or below the player - we don't want that
@@ -1531,8 +1546,8 @@ class Stalker(Enemy):
 	def set_item_drops(self, dropslist):
 		self.item_drops = dropslist
 		
-	def update(self, delta_time, bullet_controller, tilemap, enemy_controller, player, particle_controller):
-		Enemy.update(self, delta_time, bullet_controller, particle_controller)
+	def update(self, delta_time, bullet_controller, tilemap, enemy_controller, player, particle_controller, sound_controller):
+		Enemy.update(self, delta_time, bullet_controller, particle_controller, sound_controller)
 		if(self.dead):
 			return
 		if(not self.is_onscreen()):
@@ -1573,6 +1588,7 @@ class Stalker(Enemy):
 							shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
 							gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
 							bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 36 - 18, self.gun_speed, self.gun_damage)
+							sound_controller.play_sound("enemy-shoot-weak")
 							self.shot_timer = self.shot_interval
 						#print("{ai-moved}", self, "intended_path =", self.intended_path)
 							
@@ -1583,6 +1599,7 @@ class Stalker(Enemy):
 							shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
 							gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
 							bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 12 - 6, self.gun_speed, self.gun_damage_behind)
+							sound_controller.play_sound("enemy-shoot-weak")
 							self.shot_timer = self.shot_interval_behind
 								
 					else: # Too close or below the player - we don't want that
@@ -1593,6 +1610,7 @@ class Stalker(Enemy):
 							shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
 							gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
 							bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 40 - 20, self.gun_speed, self.gun_damage_behind)
+							sound_controller.play_sound("enemy-shoot-weak")
 							self.shot_timer = self.shot_interval_behind
 				elif(self.ai_state == 1): # Retreat
 					if(self.animations.get_position()[1] > 48):
@@ -1723,8 +1741,8 @@ class HeavyGuard(Enemy):
 	def set_item_drops(self, dropslist):
 		self.item_drops = dropslist
 		
-	def update(self, delta_time, bullet_controller, tilemap, enemy_controller, player, particle_controller):
-		Enemy.update(self, delta_time, bullet_controller, particle_controller)
+	def update(self, delta_time, bullet_controller, tilemap, enemy_controller, player, particle_controller, sound_controller):
+		Enemy.update(self, delta_time, bullet_controller, particle_controller, sound_controller)
 		if(self.dead):
 			return
 		if(not self.is_onscreen()):
@@ -1762,6 +1780,7 @@ class HeavyGuard(Enemy):
 								shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
 								gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
 								bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 32 - 16, self.gun_speed, self.gun_damage)
+								sound_controller.play_sound("enemy-shoot-weak")
 								self.shot_timer = self.shot_interval
 							
 					elif(playerpos[1] - self.animations.get_position()[1] > 48): # Close enough
@@ -1792,6 +1811,7 @@ class HeavyGuard(Enemy):
 								shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
 								gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
 								bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 32 - 16, self.gun_speed, self.gun_damage)
+								sound_controller.play_sound("enemy-shoot-weak")
 								self.shot_timer = self.shot_interval
 				
 				elif(self.ai_state == 4): # Shoot and retreat {non-cyclic}
@@ -1805,6 +1825,7 @@ class HeavyGuard(Enemy):
 							shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
 							gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
 							bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 24 - 12, self.gun_speed, self.gun_damage)
+							sound_controller.play_sound("enemy-shoot-weak")
 							self.shot_timer = self.shot_interval
 						
 				elif(self.ai_state == 2): # Retreat {non-cyclic}
@@ -1832,6 +1853,7 @@ class HeavyGuard(Enemy):
 						shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
 						gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
 						bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 12 - 6, self.gun_speed, self.gun_damage)
+						sound_controller.play_sound("enemy-shoot-weak")
 						self.shot_timer = self.shot_interval
 							
 		# -- Handle movement -- #
@@ -1924,7 +1946,7 @@ class Sniper(Enemy):
 		self.animations.moveto(xpos * 16, ypos * 16 - 8 - scroll_pos)
 		self.aitype = aitype
 		if not(aitype == "normal" or aitype == "camper"):
-			print("Error: Invalid ai type", aitype, "for enemy type \"marksman\", defaulting to \"normal\"")
+			print("Error: Invalid ai type", aitype, "for enemy type \"sniper\", defaulting to \"normal\"")
 			self.aitype = "normal"
 		self.current_tile = [xpos, ypos]
 		self.intended_path = self.current_tile
@@ -1970,8 +1992,8 @@ class Sniper(Enemy):
 	def set_item_drops(self, dropslist):
 		self.item_drops = dropslist
 		
-	def update(self, delta_time, bullet_controller, tilemap, enemy_controller, player, particle_controller):
-		Enemy.update(self, delta_time, bullet_controller, particle_controller)
+	def update(self, delta_time, bullet_controller, tilemap, enemy_controller, player, particle_controller, sound_controller):
+		Enemy.update(self, delta_time, bullet_controller, particle_controller, sound_controller)
 		if(self.dead):
 			return
 		if(not self.is_onscreen()):
@@ -2011,7 +2033,8 @@ class Sniper(Enemy):
 					else:
 						shoot_vector = [playerpos[0] - self.animations.get_position()[0], playerpos[1] - self.animations.get_position()[1]]
 						gun_pos = [self.animations.get_position()[0] + 8, self.animations.get_position()[1] + 20]
-						bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 30 - 15, self.gun_speed, self.gun_damage)
+						bullet_controller.enemy_shoot(gun_pos, compute_direction(shoot_vector) + random.random() * 4 - 2, self.gun_speed, self.gun_damage)
+						sound_controller.play_sound("enemy-shoot-strong")
 						self.shot_timer = self.shot_interval
 						self.aim_cursor.showing = False
 						self.set_ai_state(0, 120, 90)
@@ -2023,6 +2046,7 @@ class Sniper(Enemy):
 class EnemyController:
 	def __init__(self, enemyfile, map_scroll):
 		self.enemies = []
+		self.bosses = []
 		self.load_enemy_file(enemyfile, map_scroll)
 		self.itemdict = dict()
 		self.itemdict["ammo9mm"] = AmmoBox9mm
@@ -2030,6 +2054,7 @@ class EnemyController:
 		self.itemdict["medkit"] = Medkit
 		self.itemdict["medpack"] = Medpack
 		self.itemdict["syringe"] = Syringe
+		self.boss_battle = False
 		
 	
 	def load_enemy_file(self, enemyfile, map_scroll):
@@ -2063,15 +2088,18 @@ class EnemyController:
 				elif(enemydict["type"] == "sniper\n"):
 					enemy = Sniper(int(enemydict["xpos"]), int(enemydict["ypos"]), map_scroll)
 				if("health" in enemydict):
-					enemy.health = enemydict["health"]
-				self.enemies.append(enemy)
+					enemy.health = int(enemydict["health"])
+				if(enemydict["group"] == "boss\n"):
+					self.bosses.append(enemy)
+				else:
+					self.enemies.append(enemy)
 				
 				l = f.readline()
 			else:
 				l = f.readline()
 			
 	
-	def update_all(self, delta_time, bullet_controller, tilemap, player, item_controller, particle_controller):
+	def update_all(self, delta_time, bullet_controller, tilemap, player, item_controller, particle_controller, sound_controller):
 		for enemy in self.enemies:
 			if enemy.is_offscreen():
 				self.enemies.remove(enemy)
@@ -2084,7 +2112,23 @@ class EnemyController:
 					self.enemies.remove(enemy)
 				elif enemy.is_onscreen():
 					#print("updating enemy onscreen @ y =", enemy.animations.get_position()[1])
-					enemy.update(delta_time, bullet_controller, tilemap, self, player, particle_controller)
+					enemy.update(delta_time, bullet_controller, tilemap, self, player, particle_controller, sound_controller)
+		if(tilemap.scroll_position <= 0):
+			self.boss_battle = True
+		if(self.boss_battle):
+			for boss in self.bosses:
+				if boss.is_offscreen():
+					self.bosses.remove(enemy)
+					#print("enemy disposed")
+				else:
+					if(boss.dead and boss.deathtimer == 0):
+						for i in boss.item_drops:
+							if(random.random() < i[1]):
+								item_controller.add_item(self.itemdict[i[0]](boss.current_tile, tilemap.scroll_position))
+						self.bosses.remove(boss)
+					elif boss.is_onscreen():
+						#print("updating enemy onscreen @ y =", enemy.animations.get_position()[1])
+						boss.update(delta_time, bullet_controller, tilemap, self, player, particle_controller, sound_controller)
 	
 	def count_enemies_onscreen(self):
 		count = 0
@@ -2097,23 +2141,38 @@ class EnemyController:
 	def draw_all(self, dest):
 		for enemy in self.enemies:
 			enemy.draw(dest)
+		for boss in self.bosses:
+			boss.draw(dest)
 	
 	def scroll_all(self, amount):
 		for enemy in self.enemies:
 			enemy.scroll(amount)
+		for boss in self.bosses:
+			boss.scroll(amount)
 	
 	def check_tile_for_enemy(self, tile):
 		for enemy in self.enemies:
 			if(enemy.current_tile == tile or enemy.intended_path == tile):
 				return True
+		for boss in self.bosses:
+			if(boss.current_tile == tile or boss.intended_path == tile):
+				return True
 		return False
+		
 	
 	def collide_all(self, hitbox):
 		for enemy in self.enemies:
 			if(enemy.is_onscreen()):
 				if(hitbox.colliderect(enemy.get_coll_hitbox())):
 					return True
+		for boss in self.bosses:
+			if(boss.is_onscreen()):
+				if(hitbox.colliderect(boss.get_coll_hitbox())):
+					return True
 		return False
+	
+	def check_boss_killed(self):
+		return len(self.bosses) == 0 and len(self.enemies) == 0
 			
 class Weapon:
 	def __init__(self):
@@ -2131,6 +2190,7 @@ class Weapon:
 		self.reload_time = 1.5
 		self.gun_name = "Undefined"
 		self.gun_hud_icon = "hud/blank.png"
+		self.sound = "shoot-pistol"
 		#print("Ammo:", self.gun_ammo)
 	
 	def shoot(self):
@@ -2177,7 +2237,8 @@ class Pistol(Weapon):
 		self.ammo_type = 0 # Ammo type - 0 = 9mm, 1 = 7.62 (ammo is shared across guns that use the same ammo type)
 		self.reload_time = 1.4
 		self.gun_name = "Pistola 9mm"
-		self.gun_hud_icon = "hud/pistol_icon.png"
+		self.gun_hud_icon = load_png("hud", "icon-pistol.png")
+		self.sound = "shoot-pistol"
 		
 
 class AssaultRifle(Weapon):
@@ -2196,7 +2257,8 @@ class AssaultRifle(Weapon):
 		self.ammo_type = 1 # Ammo type - 0 = 9mm, 1 = 7.62 (ammo is shared across guns that use the same ammo type)
 		self.reload_time = 1.8
 		self.gun_name = "Rifle de Assalto"
-		self.gun_hud_icon = "hud/ar_icon.png"
+		self.gun_hud_icon = load_png("hud", "icon-ar.png")
+		self.sound = "shoot-ar"
 
 class M1Garand(Weapon):
 	def __init__(self):
@@ -2214,7 +2276,8 @@ class M1Garand(Weapon):
 		self.ammo_type = 1 # Ammo type - 0 = 9mm, 1 = 7.62 (ammo is shared across guns that use the same ammo type)
 		self.reload_time = 2.1
 		self.gun_name = "M1 Garand"
-		self.gun_hud_icon = "hud/m1_icon.png"
+		self.gun_hud_icon = load_png("hud", "icon-m1garand.png")
+		self.sound = "shoot-m1garand"
 
 class SMG(Weapon):
 	def __init__(self):
@@ -2232,7 +2295,8 @@ class SMG(Weapon):
 		self.ammo_type = 0 # Ammo type - 0 = 9mm, 1 = 7.62 (ammo is shared across guns that use the same ammo type)
 		self.reload_time = 1.3
 		self.gun_name = "Submetralhadora"
-		self.gun_hud_icon = "hud/smg_icon.png"
+		self.gun_hud_icon = load_png("hud", "icon-smg.png")
+		self.sound = "shoot-smg"
 
 class WeaponController:
 	def __init__(self):
@@ -2303,7 +2367,7 @@ class WeaponController:
 				weapon_id = 3 - i
 				if(self.switch_to(weapon_id)):
 					return
-			print("[Warning] Oops! Player picked up " + amount + "x ammo of type " + ammo_type + ", but could not switch to a weapon for some reason! ammo:", self.ammo)
+			print("[Warning] Oops! Player picked up " + str(amount) + "x ammo of type " + str(ammo_type) + ", but could not switch to a weapon for some reason! ammo: " + str(self.ammo))
 	
 	
 	
@@ -2380,7 +2444,7 @@ class Player:
 		self.reload_timer = 0
 		self.state_before_reload = 0
 		
-	def update(self, delta_time, tilemap, bullet_controller, particle_controller, enemy_controller):
+	def update(self, delta_time, tilemap, bullet_controller, particle_controller, enemy_controller, sound_controller):
 		if(self.dead):
 			if(self.lives == 0):
 				return
@@ -2412,7 +2476,7 @@ class Player:
 			self.set_animation()
 		
 		if(self.weapons.is_current_weapon_empty()):
-			self.reload_automatic()
+			self.reload_automatic(sound_controller)
 		
 		self.weapons.update(delta_time)
 					
@@ -2427,7 +2491,7 @@ class Player:
 				self.state = 0
 		if(self.state == 1 and keys[pygame.K_c]):
 			self.state = 2
-		elif(self.state == 2 and (not keys[pygame.K_c] or not (self.velocity[0] == 0 and self.velocity[1] == 0))):
+		elif(self.state == 2 and (not keys[pygame.K_c] or (self.velocity[0] == 0 and self.velocity[1] == 0))):
 			self.state = 1
 		if((self.state == 4 or self.state == 6) and keys[pygame.K_z]):
 			self.state += 1 # Aim from obstacle
@@ -2589,7 +2653,7 @@ class Player:
 		else:
 			self.spread_timer = 0
 		
-		self.check_for_damage(bullet_controller)
+		self.check_for_damage(bullet_controller, sound_controller, particle_controller)
 		
 	
 	def set_animation(self):
@@ -2641,7 +2705,7 @@ class Player:
 		topleft = self.animations.get_position()
 		return pygame.Rect(topleft[0], topleft[1] + 15, 16, 9)
 		
-	def check_for_damage(self, bullet_controller):
+	def check_for_damage(self, bullet_controller, sound_controller, particle_controller):
 		if(self.dead):
 			return
 		hitbox = self.get_hitbox()
@@ -2649,31 +2713,38 @@ class Player:
 		if(not self.invincible):
 			if not(self.state == 4 or self.state == 6 or ((self.state == 8 or self.state == 9) and (self.state_before_reload == 4 or self.state_before_reload == 6))):
 				for bullet in bullets:
-					self.take_damage(bullet.damage)
+					self.take_damage(bullet.damage, sound_controller, particle_controller)
 			else:
 				if(self.state == 6 or self.state_before_reload == 6):
 					for bullet in bullets:
 						if(bullet.direction > 30 and bullet.direction < 150):
-							self.take_damage(bullet.damage)
+							self.take_damage(bullet.damage, sound_controller, particle_controller)
 				else:
 					for bullet in bullets:
 						if(bullet.direction > 10 and bullet.direction < 170):
-							self.take_damage(bullet.damage)
+							self.take_damage(bullet.damage, sound_controller, particle_controller)
 		bullet_controller.destroy(bullets)
 		
-	def take_damage(self, damage):
+	def take_damage(self, damage, sound_controller, particle_controller):
 		if(self.dead):
 			return
 		self.health -= damage
 		print("Health:", self.health)
 		self.animations.set_animation("damage")
 		self.taking_damage = True
+		sound_controller.play_sound("alice-damage")
+		if(damage < 50):
+			particle_controller.spawn_particle("blood-small", [self.animations.get_position()[0], self.animations.get_position()[1] + 4])
+		else:
+			#particle_controller.spawn_particle("blood-large", [self.animations.get_position()[0], self.animations.get_position()[1] + 4]) #TODO: Uncomment this and remove below after implementing large blood particles
+			particle_controller.spawn_particle("blood-small", [self.animations.get_position()[0], self.animations.get_position()[1] + 4])
 		if(self.health <= 0):
-			self.die()
+			self.die(sound_controller)
 	
-	def die(self):
+	def die(self, sound_controller):
 		print("YOU ARE DEAD!!!")
 		self.dead = True
+		sound_controller.play_sound("alice-die")
 		self.death_counter = self.death_time
 		self.animations.set_animation("dead")
 		self.animations.play()
@@ -2698,7 +2769,7 @@ class Player:
 	def scroll(self, y):
 		self.animations.move_absolute([0, y])
 	
-	def shoot_ifbuttonpressed(self, bullet_controller, particle_controller):
+	def shoot_ifbuttonpressed(self, bullet_controller, particle_controller, sound_controller):
 		if(self.weapons.no_bullets):
 			keys = pygame.key.get_pressed()
 			button_state = keys[pygame.K_x]
@@ -2711,6 +2782,7 @@ class Player:
 				if(button_state and not self.shoot_button_state) or (self.shoot_buffer):
 					bullet_controller.player_melee_attack(pygame.Rect(self.animations.get_position()[0] - 5, self.animations.get_position()[1] - 6, 29, 24), int(35 + (random.random() * 20)))
 					particle_controller.spawn_particle("knife-slash", (self.animations.get_position()[0] - 8, self.animations.get_position()[1] - 8))
+					sound_controller.play_sound("melee")
 					self.shot_timer = self.knife_slash_interval
 					if(self.shoot_buffer):
 						self.shoot_buffer = False
@@ -2743,6 +2815,7 @@ class Player:
 				if(button_state and (weapon.rapid_fire or not self.shoot_button_state)) or (self.shoot_buffer):
 					if(self.weapons.shoot()):
 						bullet_controller.player_shoot(self.aim_cursor.position, angle, weapon.gun_speed, weapon.gun_damage)
+						sound_controller.play_sound(weapon.sound)
 						self.spread_timer += weapon.spread_interval * 0.8
 						if(self.spread_timer > weapon.spread_interval):
 							self.spread_timer = weapon.spread_interval
@@ -2757,20 +2830,22 @@ class Player:
 					
 		self.shoot_button_state = button_state
 	
-	def reload_ifbuttonpressed(self):
+	def reload_ifbuttonpressed(self, sound_controller):
 		keys = pygame.key.get_pressed()
 		button_state = keys[pygame.K_d]
 		if(button_state):
 			reload_result = self.weapons.reload_gun()
 			if(reload_result == 1):
 				self.reload_timer = self.weapons.get_current_weapon().reload_time
+				sound_controller.play_sound("reload")
 				self.state_before_reload = self.state
 				self.state = 9
 	
-	def reload_automatic(self):
+	def reload_automatic(self, sound_controller):
 		reload_result = self.weapons.reload_gun()
 		if(reload_result == 1):
 			self.reload_timer = self.weapons.get_current_weapon().reload_time
+			sound_controller.play_sound("reload")
 			self.state_before_reload = self.state
 			self.state = 9
 	
@@ -2787,13 +2862,14 @@ class Player:
 		elif(keys[pygame.K_1]):
 			self.weapons.switch_to(0)
 	
-	def use_syringe_ifbuttonpressed(self):
+	def use_syringe_ifbuttonpressed(self, sound_controller):
 		keys = pygame.key.get_pressed()
 		if(keys[pygame.K_s]):
 			if(self.syringe_count > 0 and self.syringe_timer == 0):
 				if(self.heal(40)):
 					self.syringe_count -= 1
 					print("Used a syringe. Syringes left:", self.syringe_count)
+					sound_controller.play_sound("syringe")
 					self.syringe_timer = self.syringe_interval
 	
 	def add_ammo(self, ammo_type, amount):
@@ -2854,7 +2930,7 @@ class Item:
 	def get_hitbox(self):
 		return pygame.Rect(self.position[0] - 1, self.position[1] - 1, self.w + 2, self.h + 2)
 	
-	def pickup_action(self, player):
+	def pickup_action(self, player, sound_controller):
 		print("An undefined item has been picked up at", self.position)
 		return True
 	
@@ -2867,10 +2943,11 @@ class AmmoBox9mm(Item):
 		Item.__init__(self, "item-ammo9mm.png", tile, map_scroll, destroy_timer)
 		self.ammo = ammo
 	
-	def pickup_action(self, player):
+	def pickup_action(self, player, sound_controller):
 		player.add_ammo(0, self.ammo)
 		# play_sfx("item-ammo.ogg")
 		print("9mm ammo: +", self.ammo)
+		sound_controller.play_sound("item-pickup-ammo")
 		return True
 
 class AmmoBox762(Item):
@@ -2878,10 +2955,11 @@ class AmmoBox762(Item):
 		Item.__init__(self, "item-ammo762.png", tile, map_scroll, destroy_timer)
 		self.ammo = ammo
 	
-	def pickup_action(self, player):
+	def pickup_action(self, player, sound_controller):
 		player.add_ammo(1, self.ammo)
 		# play_sfx("item-ammo.ogg")
 		print(".762 ammo: +", self.ammo)
+		sound_controller.play_sound("item-pickup-ammo")
 		return True
 
 class Medkit(Item):
@@ -2889,10 +2967,11 @@ class Medkit(Item):
 		Item.__init__(self, "item-medkit_small.png", tile, map_scroll, destroy_timer)
 		self.health = health
 	
-	def pickup_action(self, player):
+	def pickup_action(self, player, sound_controller):
 		if(player.heal(self.health)):
 			# play_sfx("item-health.ogg")
 			print("Medkit picked up; HP +", self.health)
+			sound_controller.play_sound("item-pickup-health")
 			return True
 		else:
 			return False
@@ -2902,10 +2981,11 @@ class Medpack(Item):
 		Item.__init__(self, "item-medkit_large.png", tile, map_scroll, destroy_timer)
 		self.health = health
 	
-	def pickup_action(self, player):
+	def pickup_action(self, player, sound_controller):
 		if(player.heal(self.health)):
 			# play_sfx("item-health.ogg")
 			print("Medpack picked up; HP +", self.health)
+			sound_controller.play_sound("item-pickup-health")
 			return True
 		else:
 			return False
@@ -2914,9 +2994,10 @@ class Syringe(Item):
 	def __init__(self, tile, map_scroll, destroy_timer = 8):
 		Item.__init__(self, "item-syringe.png", tile, map_scroll, destroy_timer)
 	
-	def pickup_action(self, player):	
+	def pickup_action(self, player, sound_controller):	
 		player.add_syringe()
 		# play_sfx("item-health.ogg")
+		sound_controller.play_sound("item-pickup-health")
 		print("Syringe +1")
 		return True
 
@@ -2983,11 +3064,11 @@ class ItemController:
 		for item in self.items:
 			item.scroll(y)
 	
-	def check_collision(self, hitbox, player):
+	def check_collision(self, hitbox, player, sound_controller):
 		for item in self.items:
 			if item.is_onscreen():
 				if(hitbox.colliderect(item.get_hitbox())):
-					if(item.pickup_action(player)):
+					if(item.pickup_action(player, sound_controller)):
 						self.items.remove(item)
 	
 
@@ -3006,7 +3087,7 @@ class BulletController:
 	def enemy_shoot(self, position, direction, speed, damage):
 		self.enemy_bullets.append(Bullet("shot.png", position, direction, speed, damage, True))
 	
-	def update_all(self, delta_time, tilemap):
+	def update_all(self, delta_time, tilemap, sound_controller):
 		#print(len(self.player_bullets), len(self.enemy_bullets))
 		for i in self.player_bullets:
 			i.update(delta_time)
@@ -3016,6 +3097,7 @@ class BulletController:
 			for h in i.hitboxes:
 				if tilemap.collide_check_high(h):
 					self.player_bullets.remove(i)
+					sound_controller.play_sound("shot-ricochet")
 					break
 		for i in self.enemy_bullets:
 			i.update(delta_time)
@@ -3025,6 +3107,7 @@ class BulletController:
 			for h in i.hitboxes:
 				if tilemap.collide_check_high(h):
 					self.enemy_bullets.remove(i)
+					sound_controller.play_sound("shot-ricochet")
 					break
 		for i in self.player_melee:
 			i[2] -= 1
@@ -3149,6 +3232,136 @@ class ParticleController:
 			if(p.name_is(name)):
 				p.move(motion_vector)
 
+
+class SoundController:
+	def __init__(self):
+		self.sounddict = dict()
+		self.sounddict["alice-damage"] = pygame.mixer.Sound(os.path.join("sound", "sfx", "alice-damage.ogg"))
+		self.sounddict["alice-die"] = pygame.mixer.Sound(os.path.join("sound", "sfx", "alice-die.ogg"))
+		self.sounddict["enemy-damage1"] = pygame.mixer.Sound(os.path.join("sound", "sfx", "enemy-damage-1.ogg"))
+		self.sounddict["enemy-damage2"] = pygame.mixer.Sound(os.path.join("sound", "sfx", "enemy-damage-2.ogg"))
+		self.sounddict["enemy-damage3"] = pygame.mixer.Sound(os.path.join("sound", "sfx", "enemy-damage-3.ogg"))
+		self.sounddict["enemy-die1"] = pygame.mixer.Sound(os.path.join("sound", "sfx", "enemy-die-1.ogg"))
+		self.sounddict["enemy-die2"] = pygame.mixer.Sound(os.path.join("sound", "sfx", "enemy-die-2.ogg"))
+		self.sounddict["enemy-shoot-strong"] = pygame.mixer.Sound(os.path.join("sound", "sfx", "enemy-shoot-strong.ogg"))
+		self.sounddict["enemy-shoot-weak"] = pygame.mixer.Sound(os.path.join("sound", "sfx", "enemy-shoot-weak.ogg"))
+		self.sounddict["gun-pickup"] = pygame.mixer.Sound(os.path.join("sound", "sfx", "gun-pickup.ogg"))
+		self.sounddict["item-pickup-ammo"] = pygame.mixer.Sound(os.path.join("sound", "sfx", "item-pickup-ammo.ogg"))
+		self.sounddict["item-pickup-health"] = pygame.mixer.Sound(os.path.join("sound", "sfx", "item-pickup-health.ogg"))
+		self.sounddict["pause"] = pygame.mixer.Sound(os.path.join("sound", "sfx", "pause.ogg"))
+		self.sounddict["reload"] = pygame.mixer.Sound(os.path.join("sound", "sfx", "reload.ogg"))
+		self.sounddict["shoot-ar"] = pygame.mixer.Sound(os.path.join("sound", "sfx", "shoot-ar.ogg"))
+		self.sounddict["shoot-m1garand"] = pygame.mixer.Sound(os.path.join("sound", "sfx", "shoot-m1garand.ogg"))
+		self.sounddict["shoot-pistol"] = pygame.mixer.Sound(os.path.join("sound", "sfx", "shoot-pistol.ogg"))
+		self.sounddict["shoot-smg"] = pygame.mixer.Sound(os.path.join("sound", "sfx", "shoot-smg.ogg"))
+		self.sounddict["shot-ricochet"] = pygame.mixer.Sound(os.path.join("sound", "sfx", "shot-ricochet.ogg"))
+		self.sounddict["syringe"] = pygame.mixer.Sound(os.path.join("sound", "sfx", "syringe.ogg"))
+		self.sounddict["melee"] = pygame.mixer.Sound(os.path.join("sound", "sfx", "melee.ogg"))
+		self.sounddict["unpause"] = pygame.mixer.Sound(os.path.join("sound", "sfx", "unpause.ogg"))
+	
+	def play_sound(self, sound):
+		self.sounddict[sound].play()
+
+class HUDController:
+	def __init__(self):
+		#self.font_1 = [load_png("hud", "font.png"), 7, 10]
+		self.font_2 = [load_png("hud", "font-contour.png"), 7, 10]
+		
+		self.hpbar = load_png("hud", "hp-bar.png")
+		self.hpbar_pos = [12, 12]
+		self.current_hp = 100
+		self.showing_hp = 100
+		self.hp_meter_easing = 0.12
+		self.hp_bar_color = pygame.Color(192, 32, 32, 255)
+		
+		self.lives = 3
+		self.lives_text = "Vidas"
+		self.heart = load_png("hud", "heart.png")
+		
+		self.weapon_icon_pos = [216, 8]
+		self.weapon_icon = load_png("hud", "icon-pistol.png")
+		self.weapon_name = "Pistola 9mm"
+		self.weapon_ammo = 13
+		self.reserve_ammo = 26
+		self.reloading = False
+		self.knife = False
+		self.knife_name = "Faca"
+		self.knife_ammostr = "--/--"
+		self.knife_icon = load_png("hud", "icon-knife.png")
+		self.reload_text = "Recarregando..."
+		
+		self.syringe = load_png("hud", "syringe.png")
+		self.syringe_pos = [224, 200]
+		self.syringe_count = 0
+	
+	def draw(self, dest):
+		# -- Draw the HP meter -- #
+		dest.blit(self.hpbar, (self.hpbar_pos[0], self.hpbar_pos[1]))
+		if(self.showing_hp > 0):
+			pygame.draw.rect(dest, self.hp_bar_color, pygame.Rect(self.hpbar_pos[0] + 18, self.hpbar_pos[1] + 3, int(self.showing_hp * 0.71), 6))
+		
+		# -- Draw the life counter -- #
+		self.draw_text(dest, self.lives_text, self.hpbar_pos[0] + 1, self.hpbar_pos[1] + 13)
+		for i in range(min(self.lives, 10)):
+			dest.blit(self.heart, (self.hpbar_pos[0] + 5 + len(self.lives_text) * (self.font_2[1] - 1) + i * 9, self.hpbar_pos[1] + 13))
+			
+		# -- Draw the weapon icon, name and ammo -- #
+		if(self.knife):
+			dest.blit(self.knife_icon, (self.weapon_icon_pos[0], self.weapon_icon_pos[1]))
+			self.draw_text(dest, self.knife_name, self.weapon_icon_pos[0] - 2 - len(self.knife_name) * (self.font_2[1] - 1), self.weapon_icon_pos[1] + 4)
+		else:
+			dest.blit(self.weapon_icon, (self.weapon_icon_pos[0], self.weapon_icon_pos[1]))
+			self.draw_text(dest, self.weapon_name, self.weapon_icon_pos[0] - 2 - len(self.weapon_name) * (self.font_2[1] - 1), self.weapon_icon_pos[1] + 4)
+		if(self.reloading):
+			ammostr = self.reload_text
+		elif(self.knife):
+			ammostr = self.knife_ammostr
+		else:
+			ammostr = str(self.weapon_ammo)
+			ammostr += "/"
+			ammostr += str(self.reserve_ammo)
+		self.draw_text(dest, ammostr, self.weapon_icon_pos[0] - 2 - len(ammostr) * (self.font_2[1] - 1), self.weapon_icon_pos[1] + 18)
+		pygame.draw.line(dest, pygame.Color(0, 0, 0, 255), (self.weapon_icon_pos[0] - 2, self.weapon_icon_pos[1] + 14), (self.weapon_icon_pos[0] - 96, self.weapon_icon_pos[1] + 14))
+		pygame.draw.line(dest, pygame.Color(255, 255, 255, 255), (self.weapon_icon_pos[0] - 2, self.weapon_icon_pos[1] + 15), (self.weapon_icon_pos[0] - 96, self.weapon_icon_pos[1] + 15))
+		pygame.draw.line(dest, pygame.Color(0, 0, 0, 255), (self.weapon_icon_pos[0] - 2, self.weapon_icon_pos[1] + 16), (self.weapon_icon_pos[0] - 96, self.weapon_icon_pos[1] + 16))
+		
+		# -- Draw the syringe count -- #
+		dest.blit(self.syringe, (self.syringe_pos[0], self.syringe_pos[1]))
+		self.draw_text(dest, str(self.syringe_count), self.syringe_pos[0] + 14, self.syringe_pos[1] + 7)
+		
+	
+	def draw_text(self, dest, text, x, y, font = -1, x_spacing = -1):
+		if(font == -1):
+			font = self.font_2
+		if(x_spacing == -1):
+			x_spacing = font[1] - 1
+		for i in range(len(text)):
+			char_index = ord(text[i])
+			char_x = char_index % 32
+			char_y = char_index // 32
+			char_rect = pygame.Rect(char_x * font[1], char_y * font[2], font[1], font[2])
+			dest.blit(font[0], (x + i * x_spacing, y), char_rect)
+	
+	def update(self, player):
+		self.current_hp = max(0, player.health)
+		self.lives = player.lives
+		self.syringe_count = player.syringe_count
+		weapons = player.weapons
+		self.weapon_icon = weapons.get_current_weapon().gun_hud_icon
+		self.weapon_name = weapons.get_current_weapon().gun_name
+		self.weapon_ammo = weapons.get_current_weapon().gun_ammo
+		self.reserve_ammo = weapons.ammo[weapons.get_current_weapon().ammo_type]
+		self.reloading = (player.state == 9 or player.state == 10) and player.reload_timer > 0
+		self.knife = weapons.no_bullets
+		# -- Update HP meter animation -- #
+		if(abs(self.showing_hp - self.current_hp)) > 1:
+			self.showing_hp = self.showing_hp * (1 - self.hp_meter_easing) + self.current_hp * self.hp_meter_easing
+		else:
+			self.showing_hp = self.current_hp
+	
+			
+		
+		
 	
 	
 # compute_direction: Computes the direction of a velocity vector
@@ -3187,68 +3400,80 @@ def get_scroll_amount(player, tilemap):
 		return 0
 
 def main():
+	pygame.mixer.pre_init(44100, -16, 2, 4096)
 	pygame.init() # initialize pygame
+	pygame.mixer.init()
 	clock = pygame.time.Clock() # create a Clock object for timing
 	window = pygame.display.set_mode((768, 672)) # create our window
 	pygame.display.set_caption("Alice no País de Bolsotaurus")
 	imgbuffer = pygame.Surface((256, 224)) # this is where we are going to draw the graphics
-	tilemap = TilemapHandler("tilemap-1-0.png", "map-1-0.hmf", "tileset_collision-1-0.hmf")
-	uppermap = TilemapHandler("tilemap-1-0.png", "uppermap-1-0.hmf", "tileset_collision-1-0.hmf")
 	alice = Player()
-	alice.moveto(120, 100)
-	bullet_con = BulletController()
-	enemy_con = EnemyController("enemies-1-0.dat", tilemap.scroll_position)
-	#item_con = ItemController() #TODO: Debugging only - uncomment this and remove line below
-	item_con = ItemController("items-1-0.dat", tilemap.scroll_position)
-	particle_con = ParticleController()
+	sound_con = SoundController()
+	hud_con = HUDController()
 	scroll_lock = False
 	random.seed()
-	while(True):
-		# Update
-		delta_time = clock.tick(60) / 1000.0 # grab the time passed since last frame
-		enemy_con.update_all(delta_time, bullet_con, tilemap, alice, item_con, particle_con)
-		item_con.update_all(delta_time)
-		bullet_con.update_all(delta_time, tilemap)
-		particle_con.update_all(delta_time)
-		alice.update(delta_time, tilemap, bullet_con, particle_con, enemy_con)
-		alice.shoot_ifbuttonpressed(bullet_con, particle_con)
-		alice.reload_ifbuttonpressed()
-		alice.change_weapon_ifbuttonpressed()
-		alice.use_syringe_ifbuttonpressed()
-		item_con.check_collision(alice.get_coll_hitbox(), alice)
-		if(not scroll_lock):
-			if(enemy_con.count_enemies_onscreen() >= 4):
-				scroll_lock = True
-		else:
-			if(enemy_con.count_enemies_onscreen() == 0):
-				scroll_lock = False
-		if(not scroll_lock):
-			scroll = get_scroll_amount(alice, tilemap)
-		else:
-			scroll = 0
-		if(scroll > 0):
-			bullet_con.scroll(scroll)
-			alice.scroll(scroll)
-			tilemap.scroll(scroll)
-			uppermap.scroll(scroll)
-			enemy_con.scroll_all(scroll)
-			item_con.scroll_all(scroll)
-			particle_con.scroll_all(scroll)
-		# Draw
-		imgbuffer.fill((0, 0, 0)) # fill the buffer with black pixels
-		tilemap.draw_ground(imgbuffer) # draw the ground tile layer
-		item_con.draw_all(imgbuffer)
-		enemy_con.draw_all(imgbuffer)
-		alice.draw(imgbuffer) # draw the character
-		particle_con.draw_all(imgbuffer)
-		bullet_con.draw_all(imgbuffer)
-		uppermap.draw_ground(imgbuffer)
-		window.blit(pygame.transform.scale(imgbuffer, (768, 672)), (0, 0)) # blit our buffer to the main window
-		pygame.display.update() # flip the display, showing the graphics
-		for event in pygame.event.get(): # check if the window has been closed
-			if(event.type == pygame.QUIT):
-				pygame.quit() # quit the game
-				sys.exit()
+	# -- Stage loop -- #
+	for i in range(4):
+		bullet_con = BulletController()
+		particle_con = ParticleController()
+		tilemap = TilemapHandler("tilemap-1-0.png", "map-1-0.hmf", "tileset_collision-1-0.hmf")
+		uppermap = TilemapHandler("tilemap-1-0.png", "uppermap-1-0.hmf", "tileset_collision-1-0.hmf")
+		enemy_con = EnemyController("enemies-1-0.dat", tilemap.scroll_position)
+		#item_con = ItemController() #TODO: Debugging only - uncomment this and remove line below
+		item_con = ItemController("items-1-0.dat", tilemap.scroll_position)
+		alice.moveto(120, 100)
+		# -- Main loop -- #
+		while(not enemy_con.check_boss_killed()):
+			# Update
+			delta_time = clock.tick(60) / 1000.0 # grab the time passed since last frame
+			enemy_con.update_all(delta_time, bullet_con, tilemap, alice, item_con, particle_con, sound_con)
+			item_con.update_all(delta_time)
+			bullet_con.update_all(delta_time, tilemap, sound_con)
+			particle_con.update_all(delta_time)
+			alice.update(delta_time, tilemap, bullet_con, particle_con, enemy_con, sound_con)
+			alice.shoot_ifbuttonpressed(bullet_con, particle_con, sound_con)
+			alice.reload_ifbuttonpressed(sound_con)
+			alice.change_weapon_ifbuttonpressed()
+			alice.use_syringe_ifbuttonpressed(sound_con)
+			item_con.check_collision(alice.get_coll_hitbox(), alice, sound_con)
+			hud_con.update(alice)
+			if(not scroll_lock):
+				if(enemy_con.count_enemies_onscreen() >= 4):
+					scroll_lock = True
+			else:
+				if(enemy_con.count_enemies_onscreen() == 0):
+					scroll_lock = False
+			if(not scroll_lock):
+				scroll = get_scroll_amount(alice, tilemap)
+			else:
+				scroll = 0
+			if(scroll > 0):
+				bullet_con.scroll(scroll)
+				alice.scroll(scroll)
+				tilemap.scroll(scroll)
+				uppermap.scroll(scroll)
+				enemy_con.scroll_all(scroll)
+				item_con.scroll_all(scroll)
+				particle_con.scroll_all(scroll)
+			# Draw
+			imgbuffer.fill((0, 0, 0)) # fill the buffer with black pixels
+			tilemap.draw_ground(imgbuffer) # draw the ground tile layer
+			item_con.draw_all(imgbuffer)
+			enemy_con.draw_all(imgbuffer)
+			alice.draw(imgbuffer) # draw the character
+			particle_con.draw_all(imgbuffer)
+			bullet_con.draw_all(imgbuffer)
+			uppermap.draw_ground(imgbuffer)
+			hud_con.draw(imgbuffer)
+			window.blit(pygame.transform.scale(imgbuffer, (768, 672)), (0, 0)) # blit our buffer to the main window
+			pygame.display.update() # flip the display, showing the graphics
+			for event in pygame.event.get(): # check if the window has been closed
+				if(event.type == pygame.QUIT):
+					pygame.quit() # quit the game
+					sys.exit()
+	
+
+	
 
 
 if __name__ == '__main__': main()
