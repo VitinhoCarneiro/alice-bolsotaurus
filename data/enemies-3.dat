@@ -1,0 +1,7 @@
+enemy:
+type=gunner
+ypos=7
+xpos=10
+group=boss
+health=145
+:end
