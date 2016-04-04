@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+# github.com/VitinhoCarneiro/alice-bolsotaurus
 
 import pygame
 import math
@@ -3798,6 +3799,9 @@ def main():
 	window = pygame.display.set_mode((768, 672)) # create our window
 	pygame.display.set_caption("Alice no País de Bolsotaurus")
 	imgbuffer = pygame.Surface((256, 224)) # this is where we are going to draw the graphics
+	dark_screen = load_png("hud", "dark_pattern.png")
+	pause_banner = load_png("hud", "pause.png")
+	cursor = load_png("hud", "cursor.png")
 	while(True):
 		alice = Player()
 		sound_con = SoundController()
@@ -3842,6 +3846,9 @@ def main():
 				boss = False
 				ending = False
 				end_timeout = 0.8
+				paused = False
+				pause_pressed = False
+				pause_cur = 0
 				bullet_con = BulletController()
 				particle_con = ParticleController()
 				tilemap = TilemapHandler(stage_data["tileset"][i], stage_data["tilemap"][i], "tileset_collision.hmf")
@@ -3868,45 +3875,70 @@ def main():
 					while(end_timeout > 0):
 						# Update
 						delta_time = clock.tick(60) / 1000.0 # grab the time passed since last frame
-						if(ending):
-							end_timeout -= delta_time
-							if not(trans2.has_completed()):
-								trans2.update(delta_time)
-						if(not trans.has_completed()):
-							trans.update(delta_time)
-						if(banner.moving):
-							banner.update(delta_time)
-						if(text.moving):
-							text.update(delta_time)
-						enemy_con.update_all(delta_time, bullet_con, tilemap, alice, item_con, particle_con, sound_con)
-						item_con.update_all(delta_time)
-						bullet_con.update_all(delta_time, tilemap, sound_con)
-						particle_con.update_all(delta_time)
-						alice.update(delta_time, tilemap, bullet_con, particle_con, enemy_con, sound_con)
-						alice.shoot_ifbuttonpressed(bullet_con, particle_con, sound_con)
-						alice.reload_ifbuttonpressed(sound_con)
-						alice.change_weapon_ifbuttonpressed()
-						alice.use_syringe_ifbuttonpressed(sound_con)
-						item_con.check_collision(alice.get_coll_hitbox(), alice, sound_con)
-						hud_con.update(alice)
-						if(not scroll_lock):
-							if(enemy_con.count_enemies_onscreen() >= 4):
-								scroll_lock = True
+						if not paused:
+							if(ending):
+								end_timeout -= delta_time
+								if not(trans2.has_completed()):
+									trans2.update(delta_time)
+							if(not trans.has_completed()):
+								trans.update(delta_time)
+							if(banner.moving):
+								banner.update(delta_time)
+							if(text.moving):
+								text.update(delta_time)
+							enemy_con.update_all(delta_time, bullet_con, tilemap, alice, item_con, particle_con, sound_con)
+							item_con.update_all(delta_time)
+							bullet_con.update_all(delta_time, tilemap, sound_con)
+							particle_con.update_all(delta_time)
+							alice.update(delta_time, tilemap, bullet_con, particle_con, enemy_con, sound_con)
+							alice.shoot_ifbuttonpressed(bullet_con, particle_con, sound_con)
+							alice.reload_ifbuttonpressed(sound_con)
+							alice.change_weapon_ifbuttonpressed()
+							alice.use_syringe_ifbuttonpressed(sound_con)
+							item_con.check_collision(alice.get_coll_hitbox(), alice, sound_con)
+							hud_con.update(alice)
+							if(not scroll_lock):
+								if(enemy_con.count_enemies_onscreen() >= 4):
+									scroll_lock = True
+							else:
+								if(enemy_con.count_enemies_onscreen() == 0):
+									scroll_lock = False
+							if(not scroll_lock):
+								scroll = get_scroll_amount(alice, tilemap)
+							else:
+								scroll = 0
+							if(scroll > 0):
+								bullet_con.scroll(scroll)
+								alice.scroll(scroll)
+								tilemap.scroll(scroll)
+								uppermap.scroll(scroll)
+								enemy_con.scroll_all(scroll)
+								item_con.scroll_all(scroll)
+								particle_con.scroll_all(scroll)
+						keys = pygame.key.get_pressed()
+						if keys[pygame.K_ESCAPE]:
+							if not pause_pressed:
+								pause_pressed = True
+								if paused:
+									paused = False
+									pause_cur = 0
+								else:
+									paused = True
 						else:
-							if(enemy_con.count_enemies_onscreen() == 0):
-								scroll_lock = False
-						if(not scroll_lock):
-							scroll = get_scroll_amount(alice, tilemap)
-						else:
-							scroll = 0
-						if(scroll > 0):
-							bullet_con.scroll(scroll)
-							alice.scroll(scroll)
-							tilemap.scroll(scroll)
-							uppermap.scroll(scroll)
-							enemy_con.scroll_all(scroll)
-							item_con.scroll_all(scroll)
-							particle_con.scroll_all(scroll)
+							if pause_pressed:
+								pause_pressed = False
+						if paused:
+							if keys[pygame.K_DOWN]:
+								if pause_cur < 1:
+									pause_cur += 1
+							elif keys[pygame.K_UP]:
+								if pause_cur > 0:
+									pause_cur -= 1
+							if keys[pygame.K_RETURN]:
+								if pause_cur == 0:
+									paused = False
+								elif pause_cur == 1:
+									raise ExitedGame()
 						# Draw
 						imgbuffer.fill((0, 0, 0)) # fill the buffer with black pixels
 						tilemap.draw_ground(imgbuffer) # draw the ground tile layer
@@ -3917,6 +3949,12 @@ def main():
 						bullet_con.draw_all(imgbuffer)
 						uppermap.draw_ground(imgbuffer)
 						hud_con.draw(imgbuffer)
+						if(paused):
+							imgbuffer.blit(dark_screen, (0, 0))
+							imgbuffer.blit(pause_banner, (48, 60))
+							hud_con.draw_text(imgbuffer, "Continuar", 96, 112)
+							hud_con.draw_text(imgbuffer, "Sair do jogo", 96, 124)
+							imgbuffer.blit(cursor, (87, 113 + pause_cur * 12))
 						if(banner.moving):
 							banner.draw(imgbuffer)
 						if(text.moving):
@@ -3933,7 +3971,7 @@ def main():
 								boss = True
 						if(enemy_con.check_boss_killed()):
 							ending = True
-						if(iddqd and pygame.key.get_pressed()[pygame.K_p]):
+						if(iddqd and keys[pygame.K_p]):
 							ending = True
 						for event in pygame.event.get(): # check if the window has been closed
 							if(event.type == pygame.QUIT):
@@ -3986,7 +4024,7 @@ def main():
 								pygame.quit() # quit the game
 								sys.exit()
 		except ExitedGame:
-				pass
+			pass
 	
 
 	
